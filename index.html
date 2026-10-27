@@ -248,6 +248,7 @@ let S=Object.assign({theme:'system',big:false,defCur:'JPY',autoRates:true},store
 function applyS(){const r=document.documentElement;S.theme==='system'?r.removeAttribute('data-theme'):r.setAttribute('data-theme',S.theme);r.classList.toggle('big',!!S.big)}
 const setS=(k,v)=>{S[k]=v;store.set('wakekko.settings',S);applyS()};
 applyS();
+const CONTACT='dev-jp@outlook.jp';
 const APP_VERSION='1.1(2026年10月27日)', ISSUES='https://github.com/shoizuno-cloud/split-the-check/issues';
 /* 外から入ってくるデータ(バックアップ・共有リンク)は、形を確かめてから使う */
 function validEvent(e){
@@ -438,7 +439,7 @@ privacy:{title:'プライバシーポリシー',body:`<p class="meta">最終更�
 <h3>外部への通信</h3><ul><li><b>為替レート</b>: 外貨の換算のため、ExchangeRate-API(open.er-api.com)または Frankfurter に、通貨レートを問い合わせます。送るのは通常の通信情報(IPアドレスなど)のみで、金額やメンバー名は送りません。</li><li><b>部品の読み込み</b>: アイコン(Lucide)とレシート読み取り(Tesseract.js)を、unpkg・jsDelivr から読み込みます。レシートの日本語データは、読み取りを初めて使うときに Tesseract のサーバーから読み込まれます。</li><li><b>配信</b>: 本サービスは GitHub Pages で配信しており、GitHub がアクセスログを記録する場合があります。</li></ul>
 <h3>レシートの写真</h3><p>写真の文字の読み取りは、すべてお使いの端末の中で行います。写真は送信も保存もしません。</p>
 <h3>共有リンク</h3><p>共有リンクには、イベントの内容がリンクの中に含まれます(「#」以降の部分で、リンクを開いても配信サーバーには送られません)。リンクを知っている人は内容を見られるため、送る相手に気をつけてください。振込先は、リンクを作るときに含めるかを選べ、初期設定では含めません。LINEなどで送ると、そのサービスにも内容が渡ります。</p>
-<h3>お問い合わせ</h3><p>ご意見やご質問は、<a href="${ISSUES}" target="_blank" rel="noopener">GitHub の Issues</a> へお寄せください。個人情報は書かないでください。</p>
+<h3>お問い合わせ</h3><p>ご意見やご質問は、<a href="mailto:${CONTACT}?subject=${encodeURIComponent('Let\'s split the check へのお問い合わせ')}">${CONTACT}</a> までお送りください。不具合のご報告は <a href="${ISSUES}" target="_blank" rel="noopener">GitHub の Issues</a> でも受け付けています(公開の場なので、個人情報は書かないでください)。お問い合わせでいただいたメールアドレスなどは、返信のためだけに使います。</p>
 <h3>変更</h3><p>必要に応じてこのポリシーを変更します。変更後はこのページに掲載します。</p>`},
 terms:{title:'利用規約',body:`<p class="meta">最終更新: 2026年10月27日</p>
 <h3>1. サービスの内容</h3><p>本サービスは、割り勘の計算を支援する無料のWebアプリです。会員登録は不要です。送金・決済の機能はなく、お金の移動は、利用者が自分の銀行アプリなどで行います。</p>
@@ -476,7 +477,10 @@ function openSettings(){
     <li><b>精算</b>: 誰が誰にいくらか確認し、行をタップして振込先をコピーします。送金したら「送金済み」にします。</li></ol></details>
   <a class="set-link" href="#/terms">${icon('file-text')}利用規約${icon('chevron-right')}</a>
   <a class="set-link" href="#/privacy">${icon('shield-check')}プライバシーポリシー${icon('chevron-right')}</a>
-  <a class="set-link" href="${ISSUES}" target="_blank" rel="noopener">${icon('message-circle')}お問い合わせ・不具合報告${icon('external-link')}</a>
+  <h3 class="set-h">お問い合わせ</h3>
+  <p class="hint" style="margin:8px 0">ご意見・不具合のご報告は、こちらへお送りください。</p>
+  <div class="row2" style="flex-wrap:wrap"><span class="v" style="flex:1 1 180px;font-weight:700;overflow-wrap:anywhere">${CONTACT}</span><button class="btn tonal sm" data-act="cp" data-v="${CONTACT}">${icon('copy')}コピー</button><a class="btn outline sm" href="mailto:${CONTACT}?subject=${encodeURIComponent("Let's split the check へのお問い合わせ")}">${icon('mail')}メールを作成</a></div>
+  <a class="set-link" href="${ISSUES}" target="_blank" rel="noopener" style="margin-top:8px">${icon('message-circle')}不具合を GitHub で報告${icon('external-link')}</a>
   <p class="hint" style="margin-top:16px">バージョン ${APP_VERSION}<br>アイコン: <a href="https://lucide.dev" target="_blank" rel="noopener">Lucide</a>(ISC) ／ 文字認識: <a href="https://github.com/naptha/tesseract.js" target="_blank" rel="noopener">Tesseract.js</a>(Apache-2.0) ／ <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener">Rates By Exchange Rate API</a></p>`);
 }
 const BK_APP='lets-split-the-check';

@@ -1,0 +1,724 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0017C1">
+<meta name="color-scheme" content="light dark">
+<title>Let's split the check</title>
+<meta name="description" content="傾斜・為替・レシート読み取りに対応した割り勘アプリ">
+<style>
+/* ===== Design tokens =====
+   色・フォーカス・タップ領域・文字サイズ: デジタル庁デザインシステム
+   タブバー・大見出し・セーフエリア・ダーク: Apple HIG
+   トーナル表面・状態レイヤー・FAB・シート: Material 3 */
+:root{
+  --bg:#fff; --s1:#F6F7FB; --s2:#ECEFF7; --s3:#E1E6F2;
+  --on:#1A1A1A; --on2:#4D4D4D; --outline:#767676; --outline-v:#D5D9E5;
+  --primary:#0017C1; --on-primary:#fff; --pc:#E3E8FF; --on-pc:#00118F;
+  --error:#CE0000; --ec:#FDECEC; --ok:#197A4B; --okc:#E3F4EA;
+  --focus:#FFD43D; --scrim:rgba(0,0,0,.4);
+  --r-s:8px; --r-m:12px; --r-l:16px; --r-xl:28px;
+  --font:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",sans-serif;
+  --sab:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#111216; --s1:#1A1C23; --s2:#23262F; --s3:#2D313C;
+  --on:#EDEEF2; --on2:#B6BAC6; --outline:#8A8F9C; --outline-v:#363A46;
+  --primary:#A8B8FF; --on-primary:#0A1366; --pc:#232B6B; --on-pc:#DDE2FF;
+  --error:#FF8A8A; --ec:#3A1A1A; --ok:#7BD9A4; --okc:#17301F; --scrim:rgba(0,0,0,.6);
+}}
+*{box-sizing:border-box;margin:0}
+html{-webkit-text-size-adjust:100%}
+body{font:16px/1.7 var(--font);color:var(--on);background:var(--bg);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--primary)}
+.lucide{width:24px;height:24px;stroke-width:2;flex:none}
+.shell{max-width:640px;margin:0 auto;min-height:100dvh;padding-bottom:calc(96px + var(--sab));position:relative}
+.view{padding:0 16px 24px}
+:focus-visible{outline:4px solid var(--focus);outline-offset:2px;box-shadow:0 0 0 2px #1A1A1A}
+
+/* header */
+.topbar{display:flex;align-items:center;gap:8px;min-height:56px;padding:8px 8px 0;position:sticky;top:0;background:var(--bg);z-index:5}
+.topbar h1{flex:1;font-size:17px;font-weight:700;text-align:center;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topbar .actions{display:flex;min-width:48px;justify-content:flex-end}
+.large-title{padding:8px 16px 16px}
+.large-title h2{font-size:32px;line-height:1.3;font-weight:800;letter-spacing:.01em;overflow-wrap:anywhere}
+.large-title p{color:var(--on2);font-size:14px}
+
+/* buttons */
+.btn,.icon-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;cursor:pointer;text-decoration:none;-webkit-tap-highlight-color:transparent}
+.btn{min-height:48px;padding:0 20px;border-radius:var(--r-m);font-weight:700;background:var(--primary);color:var(--on-primary)}
+.btn.tonal{background:var(--pc);color:var(--on-pc)}
+.btn.outline{background:transparent;color:var(--primary);box-shadow:inset 0 0 0 1px var(--outline)}
+.btn.text{background:transparent;color:var(--primary);padding:0 12px}
+.btn.danger{background:transparent;color:var(--error);box-shadow:inset 0 0 0 1px var(--error)}
+.btn.block{width:100%}
+.btn.sm{min-height:44px;padding:0 14px;font-size:15px}
+.icon-btn{width:48px;height:48px;border-radius:50%;background:transparent;color:var(--primary)}
+.btn::after,.icon-btn::after,.chip::after,.row-link::after{content:"";position:absolute;inset:0;border-radius:inherit;background:currentColor;opacity:0;transition:opacity .15s;pointer-events:none}
+.btn:hover::after,.icon-btn:hover::after,.chip:hover::after,.row-link:hover::after{opacity:.08}
+.btn:active::after,.icon-btn:active::after,.chip:active::after,.row-link:active::after{opacity:.14}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.fab{position:fixed;right:max(16px,calc(50% - 304px));bottom:calc(88px + var(--sab));min-height:56px;padding:0 20px;border-radius:var(--r-l);box-shadow:0 4px 12px rgba(0,0,0,.25);z-index:6}
+.fab.home{bottom:calc(24px + var(--sab))}
+
+/* cards & lists */
+.card{background:var(--s1);border:1px solid var(--outline-v);border-radius:var(--r-l);padding:16px;margin-bottom:12px}
+.card h3,.h3{font-size:18px;line-height:1.5;font-weight:700;margin-bottom:8px}
+.sub{color:var(--on2);font-size:14px}
+.list{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.row-link{position:relative;display:flex;align-items:center;gap:12px;padding:14px 16px;min-height:64px;background:var(--s1);border:1px solid var(--outline-v);border-radius:var(--r-l);color:inherit;text-decoration:none}
+.row-link .grow{flex:1;min-width:0}
+.row-link .t{font-weight:700;overflow-wrap:anywhere}
+.amount{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:13px;line-height:1.4;padding:2px 8px;border-radius:var(--r-s);background:var(--s3);color:var(--on)}
+.tag.req{background:var(--ec);color:var(--error);margin-left:8px;font-weight:700}
+.tag.p{background:var(--pc);color:var(--on-pc)}
+.empty{text-align:center;padding:40px 16px;color:var(--on2)}
+.empty .lucide{width:56px;height:56px;color:var(--primary);margin-bottom:12px}
+.empty h3{color:var(--on)}
+.steps{list-style:none;padding:0;margin:20px auto 0;max-width:340px;text-align:left;counter-reset:s}
+.steps li{counter-increment:s;display:flex;gap:12px;align-items:center;margin-bottom:8px}
+.steps li::before{content:counter(s);flex:none;width:28px;height:28px;border-radius:50%;background:var(--primary);color:var(--on-primary);display:grid;place-items:center;font-weight:700;font-size:14px}
+
+/* avatar */
+.av{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:16px;background:hsl(var(--h) 70% 90%);color:hsl(var(--h) 65% 22%)}
+.av.sm{width:28px;height:28px;font-size:13px}
+@media (prefers-color-scheme:dark){.av{background:hsl(var(--h) 35% 26%);color:hsl(var(--h) 80% 88%)}}
+
+/* forms (DADS: label above, 必須 tag, error text next to field) */
+.field{margin-bottom:20px}
+.field>label,.field>.lbl{display:block;font-weight:700;margin-bottom:4px}
+.hint{color:var(--on2);font-size:14px;margin-bottom:6px}
+.input,select.input{width:100%;min-height:48px;padding:8px 12px;border:1px solid var(--outline);border-radius:var(--r-s);background:var(--bg);appearance:none}
+select.input{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23767676' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:40px}
+.input.num{text-align:right;font-variant-numeric:tabular-nums}
+.input[aria-invalid=true]{border-color:var(--error);border-width:2px}
+.err{display:flex;gap:8px;align-items:flex-start;color:var(--error);font-weight:700;font-size:14px;margin:8px 0}
+.err .lucide{width:20px;height:20px;margin-top:2px}
+.row2{display:flex;gap:8px;align-items:center}
+.row2>.input.cur{width:132px;flex:none}
+.sheet-wrap .row2>.input.cur{width:132px}
+
+/* chips (M3 filter/assist chips; selected state has check icon so not colour-only) */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{position:relative;display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 14px;border-radius:var(--r-s);border:1px solid var(--outline);background:transparent;cursor:pointer;font-weight:500}
+.chip .lucide{width:18px;height:18px;display:none}
+.chip[aria-pressed=true],.chip[aria-checked=true]{background:var(--pc);color:var(--on-pc);border-color:transparent;font-weight:700}
+.chip[aria-pressed=true] .lucide,.chip[aria-checked=true] .lucide{display:block}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--outline);border-radius:var(--r-m);overflow:hidden}
+.seg button{position:relative;min-height:48px;border:0;background:transparent;cursor:pointer;font-weight:700;display:flex;gap:6px;align-items:center;justify-content:center}
+.seg button+button{border-left:1px solid var(--outline)}
+.seg button[aria-checked=true]{background:var(--pc);color:var(--on-pc)}
+
+/* weight stepper */
+.stepper{display:inline-flex;align-items:center;gap:2px}
+.stepper .icon-btn{width:44px;height:44px;box-shadow:inset 0 0 0 1px var(--outline-v)}
+.stepper input{width:64px;min-height:44px;text-align:center;border:1px solid var(--outline);border-radius:var(--r-s);background:var(--bg);font-weight:700}
+.part{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--outline-v);flex-wrap:wrap}
+.part .who{flex:1;min-width:130px;display:flex;align-items:center;gap:10px;min-height:48px;background:none;border:0;cursor:pointer;text-align:left;border-radius:var(--r-s)}
+.part .box{flex:none;width:24px;height:24px;border:2px solid var(--outline);border-radius:6px;display:grid;place-items:center;color:transparent}
+.part .who[aria-checked=true] .box{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
+.part .box .lucide{width:16px;height:16px;stroke-width:3}
+.part .share{min-width:84px;text-align:right}
+
+/* receipt items */
+.scan{border:2px dashed var(--outline);border-radius:var(--r-l);padding:16px;text-align:center;margin-bottom:16px}
+.scan .btns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+.scan img{max-width:100%;max-height:220px;border-radius:var(--r-m);margin-bottom:8px}
+.bar{height:8px;border-radius:4px;background:var(--s3);overflow:hidden;margin:8px 0}
+.bar>i{display:block;height:100%;width:0;background:var(--primary);transition:width .2s}
+.item{background:var(--s1);border:1px solid var(--outline-v);border-radius:var(--r-m);padding:12px;margin-bottom:8px}
+.item .top{display:flex;gap:8px;margin-bottom:8px}
+.item .top .input:first-child{flex:1;min-width:0}
+.item .top .input.num{width:110px;flex:none}
+.item .hint{margin:6px 0 0}
+
+.sum{display:flex;justify-content:space-between;gap:8px;padding:4px 0}
+.sum.big{font-size:20px;font-weight:800}
+.pos{color:var(--ok)} .neg{color:var(--error)}
+
+/* settlement */
+.xfer{display:flex;align-items:center;gap:8px;padding:12px 0;border-bottom:1px solid var(--outline-v);flex-wrap:wrap}
+.xfer:last-child{border:0}
+.xfer .nm{font-weight:700}
+.xfer .amount{margin-left:auto;font-size:18px}
+table.t{width:100%;border-collapse:collapse;font-size:15px}
+table.t th,table.t td{padding:10px 4px;border-bottom:1px solid var(--outline-v);text-align:right;font-variant-numeric:tabular-nums}
+table.t th:first-child,table.t td:first-child{text-align:left}
+table.t th{font-size:13px;color:var(--on2);font-weight:700}
+
+/* tab bar (HIG) */
+.tabbar{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:min(100%,640px);display:grid;grid-template-columns:repeat(3,1fr);padding:6px 8px calc(6px + var(--sab));background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(20px) saturate(1.6);-webkit-backdrop-filter:blur(20px) saturate(1.6);border-top:1px solid var(--outline-v);z-index:7}
+.tabbar a{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:56px;color:var(--on2);text-decoration:none;font-size:12px;font-weight:700;border-radius:var(--r-m)}
+.tabbar a[aria-current=page]{color:var(--primary)}
+.tabbar a[aria-current=page] .pill{background:var(--pc)}
+.tabbar .pill{display:grid;place-items:center;width:64px;height:32px;border-radius:16px}
+
+.actionbar{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:min(100%,640px);padding:12px 16px calc(12px + var(--sab));background:var(--bg);border-top:1px solid var(--outline-v);z-index:7}
+
+/* sheet (M3 modal bottom sheet) */
+.sheet-wrap{position:fixed;inset:0;z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.scrim{position:absolute;inset:0;background:var(--scrim)}
+.sheet{position:relative;width:min(100%,640px);max-height:92dvh;overflow:auto;background:var(--bg);border-radius:var(--r-xl) var(--r-xl) 0 0;padding:8px 20px calc(20px + var(--sab));animation:up .22s ease-out}
+.sheet::before{content:"";display:block;width:32px;height:4px;border-radius:2px;background:var(--outline);opacity:.5;margin:0 auto 12px}
+.sheet h2{font-size:22px;line-height:1.4;margin-bottom:16px}
+@keyframes up{from{transform:translateY(40px);opacity:0}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + var(--sab));max-width:calc(100% - 32px);background:#2E3038;color:#fff;padding:12px 16px;border-radius:var(--r-s);z-index:30;font-size:15px;display:flex;gap:8px;align-items:center}
+.xfer{width:100%;background:none;border-left:0;border-right:0;border-top:0;cursor:pointer;text-align:left;position:relative;min-height:56px;color:inherit}
+.xfer .go{color:var(--on2)}
+.xfer[data-done=true] .nm,.xfer[data-done=true] .amount{text-decoration:line-through;color:var(--on2)}
+.kv{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--outline-v)}
+.kv .k{font-size:13px;color:var(--on2)}
+.kv .v{font-weight:700;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.kv>div{flex:1;min-width:0}
+.big-amt{font-size:32px;font-weight:800;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.rate-chip{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--on2);flex-wrap:wrap}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+</head>
+<body>
+<div class="shell" id="app"></div>
+<input type="file" id="file-cam" accept="image/*" capture="environment" hidden>
+<input type="file" id="file-pick" accept="image/*" hidden>
+
+<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+<script>
+/* ================= 基本ユーティリティ ================= */
+const $=(s,el=document)=>el.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Math.random().toString(36).slice(2,9);
+const icon=(n,c='')=>`<i data-lucide="${n}" class="${c}" aria-hidden="true"></i>`;
+const round=(x,d=2)=>Math.round(x*10**d)/10**d;
+const POPULAR=['JPY','USD','EUR','GBP','KRW','CNY','TWD','HKD','SGD','THB','VND','MYR','PHP','IDR','INR','AUD','NZD','CAD','CHF'];
+let curNames; try{curNames=new Intl.DisplayNames(['ja'],{type:'currency'})}catch{curNames={of:c=>c}}
+const dg={}; const digits=c=>dg[c]??=new Intl.NumberFormat('en',{style:'currency',currency:c}).resolvedOptions().maximumFractionDigits;
+const nf={}; const fmt=(v,c)=>(nf[c]??=new Intl.NumberFormat('ja-JP',{style:'currency',currency:c,minimumFractionDigits:digits(c),maximumFractionDigits:digits(c)})).format(v);
+const fmtMinor=(m,c)=>fmt(m/10**digits(c),c);
+const store={get(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}};
+
+/* ================= データ ================= */
+let db=store.get('wakekko.v1',{events:[]});
+const save=()=>store.set('wakekko.v1',db);
+const getEv=id=>db.events.find(e=>e.id===id);
+const mem=(ev,id)=>ev.members.find(m=>m.id===id);
+const mname=(ev,id)=>mem(ev,id)?.name??'(削除済み)';
+const hue=(ev,id)=>(ev.members.findIndex(m=>m.id===id)*47+215)%360;
+const av=(ev,id,c='')=>`<span class="av ${c}" style="--h:${hue(ev,id)}" aria-hidden="true">${esc([...mname(ev,id)][0]||'?')}</span>`;
+
+/* ================= 為替レート =================
+   open.er-api.com(日次更新・160通貨超)を第一候補、frankfurter(ECB)を予備にする。 */
+let rates=store.get('wakekko.rates',null);
+async function refreshRates(force){
+  if(!force&&rates&&Date.now()-rates.fetchedAt<10*60e3)return rates;
+  let r=null;
+  try{
+    const j=await (await fetch('https://open.er-api.com/v6/latest/USD')).json();
+    if(j.result==='success')r={table:j.rates,updatedAt:(j.time_last_update_unix||Date.now()/1000)*1000,source:'ExchangeRate-API'};
+  }catch{}
+  if(!r)try{
+    const j=await (await fetch('https://api.frankfurter.dev/v1/latest?base=USD')).json();
+    r={table:{...j.rates,USD:1},updatedAt:new Date(j.date).getTime(),source:'Frankfurter (ECB)'};
+  }catch{}
+  if(r){rates={...r,fetchedAt:Date.now()};store.set('wakekko.rates',rates);onRates()}
+  else if(force)toast('為替レートを取得できませんでした。通信状況を確認してください',true);
+  return rates;
+}
+/* from 通貨 1単位 = 何 to 通貨か */
+function rate(from,to){
+  if(from===to)return 1;
+  const t=rates?.table; if(!t||!t[from]||!t[to])return null;
+  return Number((t[to]/t[from]).toPrecision(7));
+}
+const rateStamp=()=>rates?`${rates.source} ・ ${new Date(rates.updatedAt).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}時点`:'未取得';
+
+/* ================= 計算ロジック ================= */
+/* 最大剰余法で total(整数・最小通貨単位)を重み比に配分。合計が必ず一致する */
+function allocate(total,ws){
+  const sum=ws.reduce((a,b)=>a+b,0); if(!sum)return ws.map(()=>0);
+  const raw=ws.map(w=>total*w/sum), fl=raw.map(Math.floor);
+  let rem=total-fl.reduce((a,b)=>a+b,0);
+  const order=raw.map((r,i)=>[r-fl[i],i]).sort((a,b)=>b[0]-a[0]);
+  for(let k=0;rem>0;k++,rem--)fl[order[k%order.length][1]]++;
+  return fl;
+}
+/* 1件の支払い → 精算通貨(最小単位)での総額と各人の負担額 */
+function calc(ev,p){
+  const f=10**digits(ev.cur);
+  const totalMinor=Math.round(p.amount*p.rate*f);
+  const ids=[],ws=[];
+  if(p.mode==='items'){
+    const sub={}; ev.members.forEach(m=>sub[m.id]=0);
+    p.items.forEach(it=>{
+      const who=(it.who.length?it.who:ev.members.map(m=>m.id)).filter(id=>id in sub);
+      who.forEach(id=>sub[id]+=it.price/who.length);
+    });
+    for(const id in sub)if(sub[id]>0){ids.push(id);ws.push(sub[id])}
+    if(!ids.length)ev.members.forEach(m=>{ids.push(m.id);ws.push(1)});
+  }else{
+    p.parts.forEach(x=>{if(x.w>0&&mem(ev,x.id)){ids.push(x.id);ws.push(x.w)}});
+  }
+  const al=allocate(totalMinor,ws), shares={};
+  ids.forEach((id,i)=>shares[id]=al[i]);
+  return {totalMinor,shares};
+}
+function balances(ev){
+  const b={}; ev.members.forEach(m=>b[m.id]={paid:0,owed:0});
+  ev.payments.forEach(p=>{
+    const c=calc(ev,p);
+    if(b[p.payer])b[p.payer].paid+=c.totalMinor;
+    for(const id in c.shares)if(b[id])b[id].owed+=c.shares[id];
+  });
+  return b;
+}
+function transfers(b){
+  const cr=[],de=[],out=[];
+  for(const id in b){const n=b[id].paid-b[id].owed; if(n>0)cr.push({id,v:n}); else if(n<0)de.push({id,v:-n})}
+  while(cr.length&&de.length){
+    cr.sort((a,c)=>c.v-a.v); de.sort((a,c)=>c.v-a.v);
+    const c=cr[0],d=de[0],t=Math.min(c.v,d.v);
+    out.push({from:d.id,to:c.id,v:t}); c.v-=t; d.v-=t;
+    if(!c.v)cr.shift(); if(!d.v)de.shift();
+  }
+  return out;
+}
+
+/* ================= ルーター ================= */
+let R={v:'home'}, lastKey='';
+function parseRoute(){
+  const h=location.hash.slice(1)||'/';
+  if(h.startsWith('s='))return {v:'import',data:h.slice(2)};
+  let m;
+  if(m=h.match(/^\/e\/([^/]+)\/p\/([^/]+)$/))return {v:'edit',id:m[1],pid:m[2]};
+  if(m=h.match(/^\/e\/([^/]+)\/(pay|settle|members)$/))return {v:'event',id:m[1],tab:m[2]};
+  if(m=h.match(/^\/e\/([^/]+)$/))return {v:'event',id:m[1],tab:'pay'};
+  return {v:'home'};
+}
+const go=h=>{location.hash=h};
+window.addEventListener('hashchange',render);
+
+/* ================= 画面 ================= */
+const app=$('#app');
+function header(title,{back,actions=''}={}){
+  return `<header class="topbar">${back?`<a class="icon-btn" href="${back}" aria-label="戻る">${icon('chevron-left')}</a>`:'<span style="width:48px"></span>'}<h1>${esc(title)}</h1><div class="actions">${actions||'<span style="width:48px"></span>'}</div></header>`;
+}
+function render(){
+  R=parseRoute();
+  const key=JSON.stringify(R); const same=key===lastKey; lastKey=key;
+  const y=scrollY; closeSheet();
+  if(R.v==='import'){importShared(R.data);return}
+  if(R.v!=='edit')D=null;
+  let html='';
+  const ev=R.id&&getEv(R.id);
+  if(R.v==='home')html=viewHome();
+  else if(!ev){go('/');return}
+  else if(R.v==='event')html=viewEvent(ev,R.tab);
+  else if(R.v==='edit')html=viewEdit(ev);
+  app.innerHTML=html;
+  window.lucide?.createIcons();
+  scrollTo(0,same?y:0);
+  if(R.v==='edit')updateEditor();
+}
+function onRates(){
+  if(R.v==='edit'&&D){
+    const ev=getEv(R.id);
+    if(D.cur!==ev.cur&&!D.rateManual){D.rate=rate(D.cur,ev.cur)||0;const el=$('#f-rate');if(el)el.value=D.rate||'';}
+    updateEditor();
+  }else if(R.v==='event'&&R.tab==='settle'){render()}
+}
+
+/* ---- ホーム ---- */
+function viewHome(){
+  const cards=db.events.map(ev=>{
+    const tot=ev.payments.reduce((a,p)=>a+calc(ev,p).totalMinor,0);
+    return `<a class="row-link" href="#/e/${ev.id}/pay"><span class="av" style="--h:215">${icon('users','')}</span><span class="grow"><span class="t">${esc(ev.name)}</span><br><span class="sub">${ev.members.length}人 ・ ${ev.payments.length}件 ・ ${ev.cur}</span></span><span class="amount">${fmtMinor(tot,ev.cur)}</span>${icon('chevron-right')}</a>`;
+  }).join('');
+  return `<div class="large-title" style="padding-top:max(24px,env(safe-area-inset-top))"><h2>Let's split the check</h2><p>傾斜も為替もレシートも。割り勘をスムーズに。</p></div>
+  <main class="view">${db.events.length?`<h3 class="h3">イベント</h3><div class="list">${cards}</div>`:
+    `<div class="empty">${icon('hand-coins')}<h3>まずはイベントを作りましょう</h3><p>旅行・飲み会・ランチなど、割り勘したい集まりごとに作ります。</p>
+     <ol class="steps"><li>メンバーを登録する</li><li>立て替えた支払いを記録する</li><li>「精算」で誰が誰にいくら払うか確認する</li></ol></div>`}
+  </main>
+  <button class="btn fab home" data-act="ev-new">${icon('plus')}イベントを作る</button>`;
+}
+function curOptions(sel){
+  const list=[...new Set([...POPULAR,...(rates?Object.keys(rates.table).filter(c=>{try{digits(c);return true}catch{return false}}).sort():[])])];
+  return list.map(c=>`<option value="${c}" ${c===sel?'selected':''}>${c} ${esc(curNames.of(c)||'')}</option>`).join('');
+}
+function openNewEvent(){
+  sheet(`<h2>イベントを作る</h2>
+  <div class="field"><label for="ne-name">イベント名<span class="tag req">必須</span></label><input class="input" id="ne-name" placeholder="例: 沖縄旅行" maxlength="40" autocomplete="off"></div>
+  <div class="field"><label for="ne-cur">精算に使う通貨<span class="tag req">必須</span></label><p class="hint">最終的な精算額はこの通貨で出ます。外貨の支払いは自動で換算します。</p><select class="input" id="ne-cur">${curOptions('JPY')}</select></div>
+  <div class="field"><span class="lbl">メンバー<span class="tag req">必須</span></span><p class="hint">2人以上。あとから追加・編集できます。</p><div id="ne-members" class="list" style="margin-bottom:8px">${[0,1].map(()=>memberInput()).join('')}</div>
+  <button class="btn tonal sm" data-act="ne-addrow">${icon('user-plus')}メンバー欄を追加</button></div>
+  <div id="ne-err"></div>
+  <button class="btn block" data-act="ne-submit">作成する</button>`);
+}
+const memberInput=()=>`<input class="input ne-m" placeholder="名前" maxlength="20" aria-label="メンバー名" autocomplete="off">`;
+
+/* ---- イベント詳細 ---- */
+function viewEvent(ev,tab){
+  const body={pay:tabPay,settle:tabSettle,members:tabMembers}[tab](ev);
+  const tabs=[['pay','wallet','支払い'],['settle','arrow-right-left','精算'],['members','users','メンバー']]
+    .map(([k,i,l])=>`<a href="#/e/${ev.id}/${k}" ${k===tab?'aria-current="page"':''}><span class="pill">${icon(i)}</span>${l}</a>`).join('');
+  return `${header('',{back:'#/'}).replace('<h1></h1>','<h1>'+esc(ev.name)+'</h1>').replace(/<div class="actions">.*<\/div>/,`<div class="actions"><button class="icon-btn" data-act="ev-settings" aria-label="イベント設定">${icon('settings')}</button></div>`)}
+  <div class="large-title"><h2>${esc({pay:'支払い',settle:'精算',members:'メンバー'}[tab])}</h2></div>
+  <main class="view">${body}</main>
+  ${tab==='pay'&&ev.members.length>=2?`<a class="btn fab" href="#/e/${ev.id}/p/new">${icon('plus')}支払いを追加</a>`:''}
+  <nav class="tabbar" aria-label="イベントメニュー">${tabs}</nav>`;
+}
+function tabPay(ev){
+  if(!ev.payments.length)return `<div class="empty">${icon('receipt-text')}<h3>支払いはまだありません</h3><p>立て替えた支払いを追加すると、ここに並びます。<br>レシートを撮って品目ごとに割り振ることもできます。</p></div>`;
+  const tot=ev.payments.reduce((a,p)=>a+calc(ev,p).totalMinor,0);
+  const rows=ev.payments.slice().reverse().map(p=>{
+    const c=calc(ev,p), foreign=p.cur!==ev.cur;
+    const tags=[p.mode==='items'?`<span class="tag p">${icon('receipt-text')}品目別</span>`:(new Set(p.parts.map(x=>x.w)).size>1?`<span class="tag p">${icon('scale')}傾斜あり</span>`:'')].join('');
+    return `<a class="row-link" href="#/e/${ev.id}/p/${p.id}">${av(ev,p.payer)}<span class="grow"><span class="t">${esc(p.title||'支払い')}</span><br><span class="sub">${esc(mname(ev,p.payer))}が立替 ${tags}</span></span><span style="text-align:right"><span class="amount">${fmtMinor(c.totalMinor,ev.cur)}</span>${foreign?`<br><span class="sub">${fmt(p.amount,p.cur)}</span>`:''}</span></a>`;
+  }).join('');
+  return `<div class="card"><div class="sub">合計</div><div class="amount" style="font-size:28px">${fmtMinor(tot,ev.cur)}</div><div class="sub">${ev.payments.length}件の支払い</div></div><div class="list">${rows}</div>`;
+}
+function tabMembers(ev){
+  const used=id=>ev.payments.some(p=>p.payer===id||p.parts.some(x=>x.id===id)||p.items.some(i=>i.who.includes(id)));
+  const rows=ev.members.map(m=>`<div class="card" style="padding:12px"><div class="row2" style="margin-bottom:8px">${av(ev,m.id)}<input class="input" data-f="mname" data-id="${m.id}" value="${esc(m.name)}" aria-label="名前" maxlength="20">
+    <button class="icon-btn" data-act="m-del" data-id="${m.id}" aria-label="${esc(m.name)}を削除" ${used(m.id)||ev.members.length<=2?'disabled style="opacity:.35"':''}>${icon('trash-2')}</button></div>
+    <div class="row2" style="justify-content:space-between"><span class="sub" id="wl-${m.id}">標準の傾斜(支払いごとに変更可)</span>${stepper(m.w,'mw',m.id)}</div>
+    <button class="btn ${hasPay(m)?'tonal':'outline'} sm block" data-act="m-pay" data-id="${m.id}" style="margin-top:8px">${icon('landmark')}${hasPay(m)?'振込先を編集(登録済み)':'振込先を登録'}</button></div>`).join('');
+  return `<p class="sub" style="margin-bottom:12px">傾斜は「負担の重さ」の倍率です。例: 先輩 ×1.5、後輩 ×0.5。支払いごとにも変更できます。</p>${rows}
+  <button class="btn tonal block" data-act="m-add">${icon('user-plus')}メンバーを追加</button>`;
+}
+const PAYF=[['bank','銀行名','例: ○○銀行'],['branch','支店名','例: 渋谷支店'],['type','口座種別','普通 / 当座'],['num','口座番号','例: 1234567'],['holder','口座名義(カナ)','例: タナカ タロウ'],['paypay','PayPay ID またはリンク','例: taro123 / https://pay.paypay.ne.jp/…'],['note','メモ','例: 現金でOK']];
+const hasPay=m=>m.pay&&PAYF.some(([k])=>m.pay[k]);
+const stepper=(v,f,id,i='')=>`<span class="stepper"><button class="icon-btn" data-act="wstep" data-f="${f}" data-id="${id}" data-i="${i}" data-d="-0.5" aria-label="倍率を下げる">${icon('minus')}</button><input type="number" inputmode="decimal" step="0.1" min="0" data-f="${f}" data-id="${id}" data-i="${i}" value="${v}" aria-label="倍率"><button class="icon-btn" data-act="wstep" data-f="${f}" data-id="${id}" data-i="${i}" data-d="0.5" aria-label="倍率を上げる">${icon('plus')}</button></span>`;
+
+function tabSettle(ev){
+  if(!ev.payments.length)return `<div class="empty">${icon('arrow-right-left')}<h3>精算する支払いがありません</h3><p>先に「支払い」タブで支払いを追加してください。</p></div>`;
+  const b=balances(ev), tr=transfers(b);
+  const foreign=ev.payments.filter(p=>p.cur!==ev.cur);
+  const xs=tr.length?tr.map((t,i)=>{const dn=ev.done?.[t.from+'>'+t.to]===t.v;return `<button class="xfer" data-act="xfer" data-i="${i}" data-done="${dn}" aria-label="${esc(mname(ev,t.from))}から${esc(mname(ev,t.to))}へ ${fmtMinor(t.v,ev.cur)}の振込先を開く">${av(ev,t.from,'sm')}<span class="nm">${esc(mname(ev,t.from))}</span>${icon('arrow-right')}${av(ev,t.to,'sm')}<span class="nm">${esc(mname(ev,t.to))}</span>${dn?`<span class="tag" style="background:var(--okc);color:var(--ok)">${icon('check')}送金済</span>`:''}<span class="amount">${fmtMinor(t.v,ev.cur)}</span><span class="go">${icon('chevron-right')}</span></button>`}).join(''):`<p style="display:flex;gap:8px;align-items:center;color:var(--ok);font-weight:700">${icon('circle-check')}精算は不要です</p>`;
+  const rows=ev.members.map(m=>{const x=b[m.id],n=x.paid-x.owed;return `<tr><td>${esc(m.name)}</td><td>${fmtMinor(x.paid,ev.cur)}</td><td>${fmtMinor(x.owed,ev.cur)}</td><td class="${n>0?'pos':n<0?'neg':''}">${n>0?'+':n<0?'−':''}${fmtMinor(Math.abs(n),ev.cur)}</td></tr>`}).join('');
+  return `<div class="card"><h3>精算方法</h3><p class="sub">振込の回数が最小になる組み合わせです。行をタップすると振込先を確認できます。</p>${xs}</div>
+  <div class="card"><h3>メンバーごとの内訳</h3><div style="overflow-x:auto"><table class="t"><thead><tr><th>名前</th><th>立替</th><th>負担</th><th>差引</th></tr></thead><tbody>${rows}</tbody></table></div><p class="sub" style="margin-top:8px">差引がプラスなら受け取り、マイナスなら支払いです。</p></div>
+  ${foreign.length?`<div class="card"><h3>為替レート</h3><div class="rate-chip">${icon('globe')}<span>${esc(rateStamp())}</span><button class="btn text sm" data-act="rates-refresh">${icon('refresh-cw')}更新</button></div>
+  <p class="sub" style="margin:8px 0">外貨の支払い${foreign.length}件は、入力した時点のレートで換算して固定しています。</p><button class="btn tonal sm" data-act="rates-apply">${icon('refresh-cw')}最新レートで再計算する</button></div>`:''}
+  <div class="row2" style="gap:8px"><button class="btn block" data-act="copy-result">${icon('copy')}結果をコピー</button><button class="btn outline block" data-act="share-link">${icon('share-2')}共有リンク</button></div>`;
+}
+function resultText(ev){
+  const b=balances(ev),tr=transfers(b),tot=ev.payments.reduce((a,p)=>a+calc(ev,p).totalMinor,0);
+  return `【${ev.name}】精算結果\n合計 ${fmtMinor(tot,ev.cur)}\n`+(tr.length?tr.map(t=>`${mname(ev,t.from)} → ${mname(ev,t.to)}  ${fmtMinor(t.v,ev.cur)}`).join('\n'):'精算不要です')+"\n\n(Let's split the check で計算)";
+}
+
+/* ================= 支払い編集 ================= */
+let D=null;
+function newDraft(ev,pid){
+  const p=pid!=='new'&&ev.payments.find(x=>x.id===pid);
+  if(p)return {id:p.id,title:p.title,amount:String(p.amount),cur:p.cur,rate:p.rate,rateManual:!!p.rateManual,payer:p.payer,mode:p.mode,
+    parts:Object.fromEntries(p.parts.map(x=>[x.id,x.w])),items:p.items.map(i=>({id:uid(),name:i.name,price:String(i.price),who:[...i.who]})),amountAuto:false,scan:null,err:''};
+  return {id:null,title:'',amount:'',cur:ev.cur,rate:1,rateManual:false,payer:ev.members[0].id,mode:'weight',
+    parts:Object.fromEntries(ev.members.map(m=>[m.id,m.w])),items:[],amountAuto:true,scan:null,err:''};
+}
+const itemsSum=()=>round(D.items.reduce((a,i)=>a+(parseFloat(i.price)||0),0),4);
+function draftToPayment(){
+  return {id:D.id||uid(),title:D.title.trim(),amount:parseFloat(D.amount)||0,cur:D.cur,rate:Number(D.rate)||0,rateManual:D.rateManual,payer:D.payer,mode:D.mode,
+    parts:Object.entries(D.parts).map(([id,w])=>({id,w:parseFloat(w)||0})),
+    items:D.items.filter(i=>parseFloat(i.price)).map(i=>({name:i.name.trim(),price:parseFloat(i.price),who:i.who}))};
+}
+function viewEdit(ev){
+  if(!D)D=newDraft(ev,R.pid);
+  const isNew=!D.id, foreign=D.cur!==ev.cur;
+  const payerChips=ev.members.map(m=>`<button class="chip" role="radio" aria-checked="${m.id===D.payer}" data-act="payer" data-id="${m.id}">${icon('check')}${esc(m.name)}</button>`).join('');
+  return `${header(isNew?'支払いを追加':'支払いを編集',{back:`#/e/${ev.id}/pay`,actions:isNew?'':`<button class="icon-btn" data-act="pay-del" aria-label="この支払いを削除" style="color:var(--error)">${icon('trash-2')}</button>`})}
+  <main class="view" style="padding-bottom:110px">
+  <div class="field"><label for="f-title">用途</label><input class="input" id="f-title" data-f="title" value="${esc(D.title)}" placeholder="例: 居酒屋、タクシー" maxlength="40" autocomplete="off"></div>
+  <div class="field"><label for="f-amount">金額<span class="tag req">必須</span></label>
+    <div class="row2"><input class="input num" id="f-amount" data-f="amount" type="number" inputmode="decimal" step="any" min="0" value="${esc(D.amount)}" placeholder="0">
+    <select class="input cur" id="f-cur" data-f="cur" aria-label="通貨">${curOptions(D.cur)}</select></div>
+    <div id="amount-note" class="hint" style="margin-top:6px"></div></div>
+  ${foreign?`<div class="field"><label for="f-rate">為替レート</label>
+    <div class="row2"><span style="white-space:nowrap">1 ${D.cur} =</span><input class="input num" id="f-rate" data-f="rate" type="number" inputmode="decimal" step="any" min="0" value="${D.rate||''}"><span>${ev.cur}</span>
+    <button class="btn tonal sm" data-act="rate-live" aria-label="最新レートを取得">${icon('refresh-cw')}最新</button></div>
+    <p class="hint" id="rate-note" style="margin-top:6px"></p></div>`:''}
+  <div class="field"><span class="lbl" id="payer-l">立て替えた人<span class="tag req">必須</span></span><div class="chips" role="radiogroup" aria-labelledby="payer-l">${payerChips}</div></div>
+  <div class="field"><span class="lbl" id="mode-l">分け方</span>
+    <div class="seg" role="radiogroup" aria-labelledby="mode-l">
+      <button role="radio" aria-checked="${D.mode==='weight'}" data-act="mode" data-v="weight">${icon('scale')}傾斜で分ける</button>
+      <button role="radio" aria-checked="${D.mode==='items'}" data-act="mode" data-v="items">${icon('receipt-text')}品目別(レシート)</button></div></div>
+  ${D.mode==='weight'?weightSection(ev):itemsSection(ev)}
+  <div class="card" aria-live="polite"><h3>負担額の内訳 <span class="sub">(${ev.cur})</span></h3><div id="preview"></div></div>
+  </main>
+  <div class="actionbar"><div id="form-err"></div><button class="btn block" data-act="pay-save">${icon('check')}保存する</button></div>`;
+}
+function weightSection(ev){
+  const rows=ev.members.map(m=>{const on=m.id in D.parts;return `<div class="part"><button class="who" role="checkbox" aria-checked="${on}" data-act="part" data-id="${m.id}"><span class="box">${icon('check')}</span>${av(ev,m.id,'sm')}<span>${esc(m.name)}</span></button>
+    ${on?stepper(D.parts[m.id],'pw',m.id):''}<span class="amount share" data-share="${m.id}"></span></div>`}).join('');
+  return `<div class="field"><span class="lbl">対象者と傾斜</span><p class="hint">チェックした人で、倍率の比に応じて分けます。全員 ×1 なら均等割りです。</p>
+    <div>${rows}</div><button class="btn text sm" data-act="reset-w" style="margin-top:8px">${icon('rotate-ccw')}全員 ×1(均等)に戻す</button></div>`;
+}
+function itemsSection(ev){
+  const sc=D.scan;
+  const items=D.items.map((it,i)=>`<div class="item"><div class="top"><input class="input" data-f="iname" data-i="${i}" value="${esc(it.name)}" placeholder="品名" aria-label="品名 ${i+1}"><input class="input num" data-f="iprice" data-i="${i}" type="number" inputmode="decimal" step="any" value="${esc(it.price)}" placeholder="金額" aria-label="金額 ${i+1}">
+    <button class="icon-btn" data-act="idel" data-i="${i}" aria-label="この品目を削除">${icon('x')}</button></div>
+    <div class="chips"><button class="chip" aria-pressed="${it.who.length===ev.members.length}" data-act="iall" data-i="${i}">${icon('check')}全員</button>${ev.members.map(m=>`<button class="chip" aria-pressed="${it.who.includes(m.id)}" data-act="ichip" data-i="${i}" data-id="${m.id}">${icon('check')}${esc(m.name)}</button>`).join('')}</div>
+    ${it.who.length?'':'<p class="hint">未選択の品目は全員で割ります</p>'}</div>`).join('');
+  return `<div class="scan">${sc?.url?`<img src="${sc.url}" alt="撮影したレシート">`:icon('scan-line')}
+    ${sc?.state==='loading'?`<div role="status"><div id="scan-msg">${esc(sc.msg||'準備中…')}</div><div class="bar"><i id="scan-bar" style="width:${sc.pct||0}%"></i></div></div>`:
+      sc?.state==='error'?`<p class="err" style="justify-content:center">${icon('circle-alert')}${esc(sc.msg)}</p>`:
+      `<p class="sub">${sc?.state==='done'?'読み取り結果を下に入れました。違うところは直してください。':'レシートを撮影すると品目と金額を読み取ります。'}</p>`}
+    <div class="btns"><button class="btn sm" data-act="scan-cam" ${sc?.state==='loading'?'disabled':''}>${icon('camera')}撮影する</button><button class="btn outline sm" data-act="scan-pick" ${sc?.state==='loading'?'disabled':''}>${icon('image-plus')}写真を選ぶ</button></div>
+    <p class="hint" style="margin-top:8px">読み取りはお使いの端末内で行い、画像は送信しません。初回のみ言語データを読み込みます。</p></div>
+  <div class="field"><span class="lbl">品目と注文した人</span><p class="hint">複数人を選ぶとその品目を等分します。レシート合計との差(税・サービス料)は、品目額の比で全員に按分します。</p>
+    ${items}<button class="btn tonal sm" data-act="iadd">${icon('plus')}品目を追加</button></div>`;
+}
+/* 入力のたびに再描画せず、内訳と注記だけ更新する */
+function updateEditor(){
+  const ev=getEv(R.id); if(!D||!ev||R.v!=='edit')return;
+  if(D.mode==='items'&&D.amountAuto){D.amount=String(itemsSum()||'');const el=$('#f-amount');if(el)el.value=D.amount}
+  const p=draftToPayment(), foreign=p.cur!==ev.cur;
+  const ok=p.amount>0&&p.rate>0&&(p.mode==='items'||p.parts.some(x=>x.w>0));
+  const note=$('#amount-note');
+  if(note){
+    if(D.mode==='items'){const s=itemsSum(),d=round(p.amount-s,4);
+      note.textContent=s?`品目合計 ${fmt(s,D.cur)}${d?` ＋ 税・サービス料等 ${fmt(d,D.cur)}`:''}${D.amountAuto?'(品目合計と同額)':''}`:'品目を入れると合計が自動で入ります。レシートの合計(税込)を直接入力することもできます。';
+    }else note.textContent='';
+  }
+  const rn=$('#rate-note'); if(rn)rn.textContent=D.rateManual?'手動で入力したレートです':(D.rate?`自動取得 ・ ${rateStamp()}`:'レートを取得できていません。数値を入力してください');
+  const box=$('#preview'); if(!box)return;
+  let html='';
+  if(!ok){html='<p class="sub">金額と対象者を入れると、ここに各人の負担額が出ます。</p>'}
+  else{
+    const c=calc(ev,p);
+    html=`<div class="sum big"><span>${foreign?`${fmt(p.amount,p.cur)} →`:'合計'}</span><span>${fmtMinor(c.totalMinor,ev.cur)}</span></div>`+
+      ev.members.filter(m=>m.id in c.shares).map(m=>`<div class="sum"><span style="display:flex;gap:8px;align-items:center">${av(ev,m.id,'sm')}${esc(m.name)}${m.id===p.payer?'<span class="tag">立替</span>':''}</span><span class="amount">${fmtMinor(c.shares[m.id],ev.cur)}</span></div>`).join('');
+  }
+  box.innerHTML=html; window.lucide?.createIcons({nodes:[box]});
+  document.querySelectorAll('[data-share]').forEach(el=>{
+    const id=el.dataset.share, c=ok?calc(ev,p):null;
+    el.textContent=c&&id in c.shares?fmtMinor(c.shares[id],ev.cur):'';
+  });
+}
+function savePayment(){
+  const ev=getEv(R.id), p=draftToPayment(); let e='';
+  if(!(p.amount>0))e='金額を入力してください。';
+  else if(p.cur!==ev.cur&&!(p.rate>0))e='為替レートを入力してください。';
+  else if(p.mode==='weight'&&!p.parts.some(x=>x.w>0))e='対象者を1人以上選び、倍率を0より大きくしてください。';
+  else if(p.mode==='items'&&!p.items.length)e='品目を1つ以上入力してください。';
+  $('#form-err').innerHTML=e?`<p class="err" role="alert">${icon('circle-alert')}${e}</p>`:''; window.lucide?.createIcons();
+  if(e)return;
+  p.title=p.title||'支払い';
+  const i=ev.payments.findIndex(x=>x.id===p.id);
+  if(i>=0)ev.payments[i]=p; else ev.payments.push(p);
+  save(); toast('保存しました'); go(`/e/${ev.id}/pay`);
+}
+
+/* ================= レシート読み取り (Tesseract.js) ================= */
+const loadScript=src=>new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('script'));document.head.append(s)});
+async function prep(file){
+  const bmp=await createImageBitmap(file,{imageOrientation:'from-image'});
+  const s=Math.min(1,2000/Math.max(bmp.width,bmp.height)), c=document.createElement('canvas');
+  c.width=Math.round(bmp.width*s); c.height=Math.round(bmp.height*s);
+  const x=c.getContext('2d'); x.drawImage(bmp,0,0,c.width,c.height);
+  const im=x.getImageData(0,0,c.width,c.height), d=im.data;
+  for(let i=0;i<d.length;i+=4){const g=.299*d[i]+.587*d[i+1]+.114*d[i+2], v=Math.max(0,Math.min(255,(g-128)*1.35+128+10));d[i]=d[i+1]=d[i+2]=v}
+  x.putImageData(im,0,0); return c;
+}
+function parseReceipt(text){
+  const items=[]; let total=null;
+  const TOTAL=/(合計|お会計|会計|ご請求|お支払|TOTAL)/i, SKIP=/(小計|お預|預り|釣|現金|税|TEL|電話|領収|伝票|番号|ポイント|対象|クレジット|カード|点数|お客|様|担当|レジ|登録|〒|http|\d+年|\d+月|\d+日|\d+:\d+)/i;
+  const NUM=/^(.*?)\s*[¥\\]?\s*(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)\s*(?:円|\*|※|-)?\s*$/;
+  for(const raw of text.split('\n')){
+    const line=raw.normalize('NFKC').replace(/\s+/g,' ').trim(); if(!line)continue;
+    const m=line.match(NUM); if(!m)continue;
+    const price=parseFloat(m[2].replace(/,/g,'')); if(!(price>0&&price<1e6))continue;
+    let name=m[1].replace(/(?<=[　-鿿＀-￯]) (?=[　-鿿＀-￯])/g,'').replace(/[¥\\\s:：.\-*]+$/,'').trim();
+    if(TOTAL.test(line)&&!/小計/.test(line)){total=Math.max(total||0,price);continue}
+    if(SKIP.test(line)||!/\D/.test(name)||name.length<1)continue;
+    items.push({id:uid(),name,price:String(price),who:[]});
+  }
+  return {items,total};
+}
+async function scanReceipt(file){
+  const my=D; if(!my)return;
+  my.scan={state:'loading',pct:0,msg:'画像を整えています…',url:URL.createObjectURL(file)}; render();
+  const upd=(msg,pct)=>{if(D!==my)return;my.scan.msg=msg;my.scan.pct=pct;const a=$('#scan-msg'),b=$('#scan-bar');if(a)a.textContent=msg;if(b)b.style.width=pct+'%'};
+  try{
+    const canvas=await prep(file);
+    if(!window.Tesseract){upd('読み取りエンジンを読み込み中…',3);await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js')}
+    const st={'loading tesseract core':'エンジンを準備中…','loading language traineddata':'日本語データを読み込み中…','initializing api':'準備中…','recognizing text':'文字を読み取り中…'};
+    const {data}=await Tesseract.recognize(canvas,'jpn+eng',{logger:m=>upd(st[m.status]||m.status,Math.round(m.progress*100))});
+    if(D!==my)return;
+    const r=parseReceipt(data.text);
+    if(!r.items.length){my.scan={...my.scan,state:'error',msg:'品目を読み取れませんでした。明るい場所でまっすぐ撮影するか、手入力してください。'};if(!my.items.length)my.items.push({id:uid(),name:'',price:'',who:[]})}
+    else{
+      my.items=[...my.items,...r.items];
+      if(r.total){my.amount=String(r.total);my.amountAuto=false}else my.amountAuto=true;
+      if(!my.title)my.title='レシート';
+      my.scan={...my.scan,state:'done'};
+    }
+  }catch(e){
+    if(D!==my)return;
+    my.scan={...my.scan,state:'error',msg:'読み取りに失敗しました。通信状況を確認するか、手入力してください。'};
+  }
+  render();
+}
+
+/* ================= 共有 / 取り込み ================= */
+const b64e=o=>{const b=new TextEncoder().encode(JSON.stringify(o));let s='';b.forEach(x=>s+=String.fromCharCode(x));return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')};
+const b64d=s=>JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0))));
+function importShared(data){
+  let ev; try{ev=b64d(data); if(!ev.name||!Array.isArray(ev.members)||!Array.isArray(ev.payments))throw 0}catch{toast('共有リンクを読み込めませんでした',true);history.replaceState(null,'','#/');render();return}
+  history.replaceState(null,'','#/'); app.innerHTML=viewHome(); window.lucide?.createIcons();
+  sheet(`<h2>共有されたイベント</h2><p style="margin-bottom:16px">「${esc(ev.name)}」(${ev.members.length}人・${ev.payments.length}件)を自分の端末に追加しますか？</p>
+    <div class="row2"><button class="btn outline block" data-act="sheet-close">キャンセル</button><button class="btn block" data-act="import-ok">追加する</button></div>`);
+  window._imp=ev;
+}
+
+/* ================= シート / トースト ================= */
+function sheet(html){
+  closeSheet();
+  const el=document.createElement('div'); el.className='sheet-wrap';
+  el.innerHTML=`<div class="scrim" data-act="sheet-close"></div><div class="sheet" role="dialog" aria-modal="true">${html}</div>`;
+  document.body.append(el); window.lucide?.createIcons({nodes:[el]});
+  el.querySelector('input,select,button.btn')?.focus();
+}
+function closeSheet(){document.querySelector('.sheet-wrap')?.remove()}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSheet()});
+let tt; function toast(msg,err){
+  document.querySelector('.toast')?.remove();
+  const t=document.createElement('div'); t.className='toast'; t.setAttribute('role','status');
+  t.innerHTML=`${icon(err?'circle-alert':'circle-check')}<span>${esc(msg)}</span>`; document.body.append(t); window.lucide?.createIcons({nodes:[t]});
+  clearTimeout(tt); tt=setTimeout(()=>t.remove(),2600);
+}
+async function copy(text,msg){
+  try{await navigator.clipboard.writeText(text);toast(msg)}
+  catch{const ta=document.createElement('textarea');ta.value=text;document.body.append(ta);ta.select();try{document.execCommand('copy');toast(msg)}catch{toast('コピーできませんでした',true)}ta.remove()}
+}
+
+/* ================= イベント処理 ================= */
+document.addEventListener('click',async e=>{
+  const t=e.target.closest('[data-act]'); if(!t)return;
+  const a=t.dataset.act, ev=R.id&&getEv(R.id), id=t.dataset.id, i=+t.dataset.i;
+  switch(a){
+  case 'sheet-close':closeSheet();break;
+  case 'ev-new':openNewEvent();break;
+  case 'ne-addrow':$('#ne-members').insertAdjacentHTML('beforeend',memberInput());$('#ne-members').lastElementChild.focus();break;
+  case 'ne-submit':{
+    const name=$('#ne-name').value.trim(), names=[...document.querySelectorAll('.ne-m')].map(x=>x.value.trim()).filter(Boolean);
+    const err=!name?'イベント名を入力してください。':names.length<2?'メンバーを2人以上入力してください。':new Set(names).size!==names.length?'同じ名前のメンバーがいます。区別できる名前にしてください。':'';
+    $('#ne-err').innerHTML=err?`<p class="err" role="alert">${icon('circle-alert')}${err}</p>`:''; window.lucide?.createIcons({nodes:[$('#ne-err')]});
+    if(err)return;
+    const n={id:uid(),name,cur:$('#ne-cur').value,members:names.map(n=>({id:uid(),name:n,w:1})),payments:[]};
+    db.events.unshift(n); save(); closeSheet(); go(`/e/${n.id}/pay`); break;}
+  case 'ev-settings':
+    sheet(`<h2>イベント設定</h2><div class="field"><label for="es-name">イベント名</label><input class="input" id="es-name" value="${esc(ev.name)}" maxlength="40"></div>
+      <button class="btn block" data-act="es-save" style="margin-bottom:12px">保存</button><button class="btn danger block" data-act="es-del">${icon('trash-2')}このイベントを削除</button>`);break;
+  case 'es-save':ev.name=$('#es-name').value.trim()||ev.name;save();closeSheet();render();break;
+  case 'es-del':if(confirm(`「${ev.name}」を削除します。元に戻せません。よろしいですか？`)){db.events=db.events.filter(x=>x!==ev);save();closeSheet();go('/')}break;
+  case 'm-add':
+    sheet(`<h2>メンバーを追加</h2><div class="field"><label for="ma-name">名前<span class="tag req">必須</span></label><input class="input" id="ma-name" maxlength="20" autocomplete="off"></div><div id="ma-err"></div><button class="btn block" data-act="ma-ok">追加</button>`);break;
+  case 'ma-ok':{const n=$('#ma-name').value.trim();
+    const err=!n?'名前を入力してください。':ev.members.some(m=>m.name===n)?'同じ名前のメンバーがいます。':'';
+    $('#ma-err').innerHTML=err?`<p class="err" role="alert">${icon('circle-alert')}${err}</p>`:'';window.lucide?.createIcons({nodes:[$('#ma-err')]});
+    if(err)return; ev.members.push({id:uid(),name:n,w:1});save();closeSheet();render();break;}
+  case 'm-del':if(!t.disabled&&confirm('このメンバーを削除しますか？')){ev.members=ev.members.filter(m=>m.id!==id);save();render()}break;
+  case 'wstep':{
+    const f=t.dataset.f, inp=document.querySelector(`input[data-f="${f}"][data-id="${id}"]`);
+    const v=Math.max(0,round((parseFloat(inp.value)||0)+parseFloat(t.dataset.d),2));
+    inp.value=v; inp.dispatchEvent(new Event('input',{bubbles:true})); break;}
+  case 'rates-refresh':await refreshRates(true);render();break;
+  case 'rates-apply':{
+    await refreshRates(true); let n=0;
+    ev.payments.forEach(p=>{if(p.cur!==ev.cur){const r=rate(p.cur,ev.cur);if(r){p.rate=r;p.rateManual=false;n++}}});
+    save();render();toast(n?`${n}件を最新レートで再計算しました`:'レートを取得できませんでした',!n);break;}
+  case 'copy-result':copy(resultText(ev),'精算結果をコピーしました');break;
+  case 'share-link':
+    sheet(`<h2>共有リンク</h2><p style="margin-bottom:12px">リンクを開いた人が、このイベントのコピーを自分の端末に追加できます。</p>
+      <button class="chip" id="sh-pay" role="checkbox" aria-checked="false" data-act="sh-toggle" style="margin-bottom:8px">${icon('check')}振込先も含める</button>
+      <p class="hint">オンにすると銀行口座などがリンクに入ります。リンクを送る相手に気をつけてください。</p>
+      <button class="btn block" data-act="sh-go">${icon('share-2')}リンクを作る</button>`);break;
+  case 'sh-toggle':t.setAttribute('aria-checked',t.getAttribute('aria-checked')!=='true');break;
+  case 'sh-go':{
+    const withPay=$('#sh-pay').getAttribute('aria-checked')==='true';
+    const o=withPay?ev:{...ev,members:ev.members.map(({pay,...m})=>m),done:undefined};
+    const url=location.origin+location.pathname+'#s='+b64e(o); closeSheet();
+    if(navigator.share){try{await navigator.share({title:ev.name,url});break}catch{}}
+    copy(url,'共有リンクをコピーしました');break;}
+  case 'm-pay':{
+    const m=mem(ev,id), v=m.pay||{};
+    sheet(`<h2>${esc(m.name)}さんの振込先</h2><p class="hint" style="margin-bottom:16px">この端末にだけ保存されます。精算画面から、ワンタップでコピーできます。</p>
+      ${PAYF.map(([k,l,ph])=>`<div class="field"><label for="mp-${k}">${l}</label><input class="input" id="mp-${k}" data-k="${k}" value="${esc(v[k]||'')}" placeholder="${esc(ph)}" autocomplete="off" ${k==='num'?'inputmode="numeric"':''}></div>`).join('')}
+      <button class="btn block" data-act="mp-save" data-id="${id}">保存</button>`);break;}
+  case 'mp-save':{
+    const m=mem(ev,id); const o={};
+    document.querySelectorAll('.sheet [data-k]').forEach(el=>{const x=el.value.trim();if(x)o[el.dataset.k]=x});
+    m.pay=Object.keys(o).length?o:undefined; save(); closeSheet(); render(); toast('振込先を保存しました');break;}
+  case 'xfer':{
+    const tr=transfers(balances(ev))[i]; if(!tr)break;
+    const to=mem(ev,tr.to), pay=to.pay||{}, amt=fmtMinor(tr.v,ev.cur), dn=ev.done?.[tr.from+'>'+tr.to]===tr.v;
+    const raw=String(tr.v/10**digits(ev.cur));
+    const kv=(k,v,copyable=true)=>`<div class="kv"><div><div class="k">${k}</div><div class="v">${esc(v)}</div></div>${copyable?`<button class="icon-btn" data-act="cp" data-v="${esc(v)}" aria-label="${k}をコピー">${icon('copy')}</button>`:''}</div>`;
+    const ppUrl=/^https?:\/\//.test(pay.paypay||'')?pay.paypay:'';
+    const acct=[pay.bank,pay.branch,pay.type,pay.num,pay.holder].filter(Boolean);
+    sheet(`<h2>${esc(mname(ev,tr.from))} → ${esc(to.name)}さん</h2>
+      <div class="big-amt">${amt}<button class="btn tonal sm" data-act="cp" data-v="${raw}">${icon('copy')}金額をコピー</button></div>
+      <div style="margin:12px 0">${hasPay(to)?[pay.bank&&kv('銀行名',pay.bank),pay.branch&&kv('支店名',pay.branch),pay.type&&kv('口座種別',pay.type),pay.num&&kv('口座番号',pay.num),pay.holder&&kv('口座名義',pay.holder),pay.paypay&&kv('PayPay',pay.paypay),pay.note&&kv('メモ',pay.note,false)].filter(Boolean).join(''):
+        `<p class="sub" style="padding:12px 0">${esc(to.name)}さんの振込先が未登録です。</p><button class="btn outline sm" data-act="m-pay" data-id="${to.id}">${icon('landmark')}振込先を登録する</button>`}</div>
+      <div class="grid2" style="margin-bottom:8px">${acct.length?`<button class="btn outline" data-act="cp" data-v="${esc(acct.join(' '))}">${icon('copy')}口座情報をまとめて</button>`:''}${ppUrl?`<a class="btn outline" href="${esc(ppUrl)}" target="_blank" rel="noopener">${icon('external-link')}PayPayを開く</a>`:''}</div>
+      <button class="btn ${dn?'outline':''} block" data-act="done" data-i="${i}">${icon(dn?'undo-2':'circle-check')}${dn?'送金済みを取り消す':'送金済みにする'}</button>`);break;}
+  case 'cp':copy(t.dataset.v,'コピーしました');break;
+  case 'done':{
+    const tr=transfers(balances(ev))[i]; ev.done=ev.done||{}; const k=tr.from+'>'+tr.to;
+    if(ev.done[k]===tr.v)delete ev.done[k]; else ev.done[k]=tr.v;
+    save(); closeSheet(); render(); break;}
+  case 'import-ok':{const n=window._imp;n.id=uid();db.events.unshift(n);save();closeSheet();go(`/e/${n.id}/pay`);break;}
+  /* editor */
+  case 'payer':D.payer=id;render();break;
+  case 'mode':D.mode=t.dataset.v;render();break;
+  case 'part':if(id in D.parts)delete D.parts[id];else D.parts[id]=mem(ev,id).w;render();break;
+  case 'reset-w':ev.members.forEach(m=>D.parts[m.id]=1);render();break;
+  case 'rate-live':{D.rateManual=false;await refreshRates(true);const r=rate(D.cur,ev.cur);D.rate=r||0;const el=$('#f-rate');if(el)el.value=D.rate||'';updateEditor();break;}
+  case 'iadd':D.items.push({id:uid(),name:'',price:'',who:[]});render();$$last();break;
+  case 'idel':D.items.splice(i,1);render();break;
+  case 'iall':{const it=D.items[i];it.who=it.who.length===ev.members.length?[]:ev.members.map(m=>m.id);render();break;}
+  case 'ichip':{const it=D.items[i];it.who=it.who.includes(id)?it.who.filter(x=>x!==id):[...it.who,id];render();break;}
+  case 'scan-cam':$('#file-cam').click();break;
+  case 'scan-pick':$('#file-pick').click();break;
+  case 'pay-save':savePayment();break;
+  case 'pay-del':if(confirm('この支払いを削除しますか？')){ev.payments=ev.payments.filter(p=>p.id!==D.id);save();go(`/e/${ev.id}/pay`)}break;
+  }
+});
+function $$last(){const l=document.querySelectorAll('[data-f="iname"]');l[l.length-1]?.focus()}
+document.addEventListener('input',e=>{
+  const t=e.target, f=t.dataset.f; if(!f)return;
+  const ev=R.id&&getEv(R.id);
+  if(f==='mname'){mem(ev,t.dataset.id).name=t.value;save();return}
+  if(f==='mw'){mem(ev,t.dataset.id).w=parseFloat(t.value)||0;save();return}
+  if(!D)return;
+  if(f==='title')D.title=t.value;
+  else if(f==='amount'){D.amount=t.value;D.amountAuto=false}
+  else if(f==='rate'){D.rate=parseFloat(t.value)||0;D.rateManual=true}
+  else if(f==='pw'){D.parts[t.dataset.id]=parseFloat(t.value)||0}
+  else if(f==='iname')D.items[+t.dataset.i].name=t.value;
+  else if(f==='iprice')D.items[+t.dataset.i].price=t.value;
+  updateEditor();
+});
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.dataset.f==='cur'&&D){
+    const ev=getEv(R.id); D.cur=t.value; D.rateManual=false;
+    D.rate=D.cur===ev.cur?1:(rate(D.cur,ev.cur)||0); render();
+  }
+  if(t.id==='file-cam'||t.id==='file-pick'){const f=t.files[0];t.value='';if(f)scanReceipt(f)}
+  if(t.dataset.f==='mw'||t.dataset.f==='mname')render();
+});
+
+/* ================= 起動 ================= */
+window.addEventListener('load',()=>{
+  render(); refreshRates();
+  setInterval(()=>refreshRates(),10*60e3);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshRates()});
+});
+</script>
+</body>
+</html>

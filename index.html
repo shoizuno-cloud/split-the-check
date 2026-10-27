@@ -31,12 +31,20 @@
   --font:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",sans-serif;
   --sab:env(safe-area-inset-bottom,0px);
 }
-@media (prefers-color-scheme:dark){:root{
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
   --bg:#111216; --s1:#1A1C23; --s2:#23262F; --s3:#2D313C;
   --on:#EDEEF2; --on2:#B6BAC6; --outline:#8A8F9C; --outline-v:#363A46;
   --primary:#A8B8FF; --on-primary:#0A1366; --pc:#232B6B; --on-pc:#DDE2FF;
   --error:#FF8A8A; --ec:#3A1A1A; --ok:#7BD9A4; --okc:#17301F; --scrim:rgba(0,0,0,.6);
 }}
+:root[data-theme=dark]{
+  --bg:#111216; --s1:#1A1C23; --s2:#23262F; --s3:#2D313C;
+  --on:#EDEEF2; --on2:#B6BAC6; --outline:#8A8F9C; --outline-v:#363A46;
+  --primary:#A8B8FF; --on-primary:#0A1366; --pc:#232B6B; --on-pc:#DDE2FF;
+  --error:#FF8A8A; --ec:#3A1A1A; --ok:#7BD9A4; --okc:#17301F; --scrim:rgba(0,0,0,.6);
+}
+:root[data-theme=light]{color-scheme:light}
+:root[data-theme=dark]{color-scheme:dark}
 *{box-sizing:border-box;margin:0}
 html{-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
 button,a,.chip,.row-link,select,label{touch-action:manipulation}
@@ -96,7 +104,9 @@ a{color:var(--primary)}
 /* avatar */
 .av{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:16px;background:hsl(var(--h) 70% 90%);color:hsl(var(--h) 65% 22%)}
 .av.sm{width:28px;height:28px;font-size:13px}
-@media (prefers-color-scheme:dark){.av{background:hsl(var(--h) 35% 26%);color:hsl(var(--h) 80% 88%)}}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .av{background:hsl(var(--h) 35% 26%);color:hsl(var(--h) 80% 88%)}}
+:root[data-theme=dark] .av{background:hsl(var(--h) 35% 26%);color:hsl(var(--h) 80% 88%)}
+html.big body{font-size:18px}html.big .sub,html.big .hint{font-size:16px}
 
 /* forms (DADS: label above, 必須 tag, error text next to field) */
 .field{margin-bottom:20px}
@@ -191,6 +201,22 @@ table.t th{font-size:13px;color:var(--on2);font-weight:700}
 .install{display:flex;gap:12px;align-items:flex-start;background:var(--pc);color:var(--on-pc);border-radius:var(--r-l);padding:14px 16px;margin-bottom:16px}
 .install .grow{flex:1}
 .install .btn{margin-top:8px}
+.set-h{font-size:14px;letter-spacing:.06em;color:var(--on2);margin:20px 0 4px;font-weight:700}
+.set-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--outline-v)}
+.set-row .lbl{flex:1;min-width:0;font-weight:700}
+.set-row .lbl small{display:block;font-weight:400;font-size:14px;color:var(--on2);line-height:1.5}
+.set-link{display:flex;align-items:center;gap:8px;min-height:52px;color:inherit;text-decoration:none;border-bottom:1px solid var(--outline-v);font-weight:700}
+.set-link .lucide:last-child{margin-left:auto;color:var(--on2)}
+.seg.three{grid-template-columns:repeat(3,1fr)}
+.switch{position:relative;flex:none;width:52px;height:32px;border-radius:16px;border:2px solid var(--outline);background:var(--s3);cursor:pointer;padding:0}
+.switch span{position:absolute;top:4px;left:4px;width:20px;height:20px;border-radius:50%;background:var(--outline);transition:transform .15s,background .15s}
+.switch[aria-checked=true]{background:var(--primary);border-color:var(--primary)}
+.switch[aria-checked=true] span{transform:translateX(20px);background:var(--on-primary)}
+textarea.input{min-height:96px;resize:vertical;font-size:14px}
+.doc{padding:0 16px 40px}
+.doc h3{font-size:18px;margin:24px 0 4px;line-height:1.5}
+.doc p,.doc li{margin:4px 0}.doc ul{padding-left:1.4em}
+.doc .meta{color:var(--on2);font-size:14px}
 .rate-chip{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--on2);flex-wrap:wrap}
 .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 </style>
@@ -218,6 +244,20 @@ const store={get(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch{re
 /* ================= データ ================= */
 let db=store.get('wakekko.v1',{events:[]});
 const save=()=>store.set('wakekko.v1',db);
+let S=Object.assign({theme:'system',big:false,defCur:'JPY',autoRates:true},store.get('wakekko.settings',{}));
+function applyS(){const r=document.documentElement;S.theme==='system'?r.removeAttribute('data-theme'):r.setAttribute('data-theme',S.theme);r.classList.toggle('big',!!S.big)}
+const setS=(k,v)=>{S[k]=v;store.set('wakekko.settings',S);applyS()};
+applyS();
+const APP_VERSION='1.1(2026年10月27日)', ISSUES='https://github.com/shoizuno-cloud/split-the-check/issues';
+/* 外から入ってくるデータ(バックアップ・共有リンク)は、形を確かめてから使う */
+function validEvent(e){
+  try{
+    if(!e||typeof e.name!=='string'||typeof e.cur!=='string'||!Array.isArray(e.members)||!Array.isArray(e.payments))return false;
+    digits(e.cur);
+    if(!e.members.every(m=>m&&typeof m.id==='string'&&typeof m.name==='string'&&Number.isFinite(+m.w)))return false;
+    return e.payments.every(p=>p&&typeof p.id==='string'&&Number.isFinite(p.amount)&&Number.isFinite(p.rate)&&typeof p.cur==='string'&&['weight','items'].includes(p.mode)&&Array.isArray(p.parts)&&Array.isArray(p.items)&&p.parts.every(x=>x&&Number.isFinite(+x.w))&&p.items.every(i=>i&&Number.isFinite(i.price)&&Array.isArray(i.who))&&(digits(p.cur),true));
+  }catch{return false}
+}
 const getEv=id=>db.events.find(e=>e.id===id);
 const mem=(ev,id)=>ev.members.find(m=>m.id===id);
 const mname=(ev,id)=>mem(ev,id)?.name??'(削除済み)';
@@ -228,7 +268,7 @@ const av=(ev,id,c='')=>`<span class="av ${c}" style="--h:${hue(ev,id)}" aria-hid
    open.er-api.com(日次更新・160通貨超)を第一候補、frankfurter(ECB)を予備にする。 */
 let rates=store.get('wakekko.rates',null);
 async function refreshRates(force){
-  if(!force&&rates&&Date.now()-rates.fetchedAt<10*60e3)return rates;
+  if(!force&&rates&&(!S.autoRates||Date.now()-rates.fetchedAt<10*60e3))return rates;
   let r=null;
   try{
     const j=await (await fetch('https://open.er-api.com/v6/latest/USD')).json();
@@ -306,6 +346,7 @@ let R={v:'home'}, lastKey='';
 function parseRoute(){
   const h=location.hash.slice(1)||'/';
   if(h.startsWith('s='))return {v:'import',data:h.slice(2)};
+  if(h==='/privacy'||h==='/terms')return {v:'doc',k:h.slice(1)};
   let m;
   if(m=h.match(/^\/e\/([^/]+)\/p\/([^/]+)$/))return {v:'edit',id:m[1],pid:m[2]};
   if(m=h.match(/^\/e\/([^/]+)\/(pay|settle|members)$/))return {v:'event',id:m[1],tab:m[2]};
@@ -324,11 +365,13 @@ function render(){
   R=parseRoute();
   const key=JSON.stringify(R); const same=key===lastKey; lastKey=key;
   const y=scrollY; closeSheet();
+  document.title="Let's split the check";
   if(R.v==='import'){importShared(R.data);return}
   if(R.v!=='edit')D=null;
   let html='';
   const ev=R.id&&getEv(R.id);
   if(R.v==='home')html=viewHome();
+  else if(R.v==='doc')html=viewDoc(R.k);
   else if(!ev){go('/');return}
   else if(R.v==='event')html=viewEvent(ev,R.tab);
   else if(R.v==='edit')html=viewEdit(ev);
@@ -351,7 +394,7 @@ function viewHome(){
     const tot=ev.payments.reduce((a,p)=>a+calc(ev,p).totalMinor,0);
     return `<a class="row-link" href="#/e/${ev.id}/pay"><span class="av" style="--h:215">${icon('users','')}</span><span class="grow"><span class="t">${esc(ev.name)}</span><br><span class="sub">${ev.members.length}人 ・ ${ev.payments.length}件 ・ ${ev.cur}</span></span><span class="amount">${fmtMinor(tot,ev.cur)}</span>${icon('chevron-right')}</a>`;
   }).join('');
-  return `<div class="large-title" style="padding-top:max(24px,env(safe-area-inset-top))"><h2>Let's split the check</h2><p>傾斜も為替もレシートも。割り勘をスムーズに。</p></div>
+  return `<div class="large-title" style="padding-top:max(24px,env(safe-area-inset-top));display:flex;gap:8px;align-items:flex-start"><div style="flex:1;min-width:0"><h2>Let's split the check</h2><p>傾斜も為替もレシートも。割り勘をスムーズに。</p></div><button class="icon-btn" data-act="settings" aria-label="設定" style="margin:-4px -8px 0 0">${icon('settings')}</button></div>
   <main class="view">${installCard()}${db.events.length?`<h3 class="h3">イベント</h3><div class="list">${cards}</div>`:
     `<div class="empty">${icon('hand-coins')}<h3>まずはイベントを作りましょう</h3><p>旅行・飲み会・ランチなど、割り勘したい集まりごとに作ります。</p>
      <ol class="steps"><li>メンバーを登録する</li><li>立て替えた支払いを記録する</li><li>「精算」で誰が誰にいくら払うか確認する</li></ol></div>`}
@@ -378,13 +421,66 @@ function curOptions(sel){
 function openNewEvent(){
   sheet(`<h2>イベントを作る</h2>
   <div class="field"><label for="ne-name">イベント名<span class="tag req">必須</span></label><input class="input" id="ne-name" placeholder="例: 沖縄旅行" maxlength="40" autocomplete="off"></div>
-  <div class="field"><label for="ne-cur">精算に使う通貨<span class="tag req">必須</span></label><p class="hint">最終的な精算額はこの通貨で出ます。外貨の支払いは自動で換算します。</p><select class="input" id="ne-cur">${curOptions('JPY')}</select></div>
+  <div class="field"><label for="ne-cur">精算に使う通貨<span class="tag req">必須</span></label><p class="hint">最終的な精算額はこの通貨で出ます。外貨の支払いは自動で換算します。</p><select class="input" id="ne-cur">${curOptions(S.defCur)}</select></div>
   <div class="field"><span class="lbl">メンバー<span class="tag req">必須</span></span><p class="hint">2人以上。あとから追加・編集できます。</p><div id="ne-members" class="list" style="margin-bottom:8px">${[0,1].map(()=>memberInput()).join('')}</div>
   <button class="btn tonal sm" data-act="ne-addrow">${icon('user-plus')}メンバー欄を追加</button></div>
   <div id="ne-err"></div>
   <button class="btn block" data-act="ne-submit">作成する</button>`);
 }
 const memberInput=()=>`<input class="input ne-m" placeholder="名前" maxlength="20" aria-label="メンバー名" autocomplete="off">`;
+
+/* ---- 規約・ポリシー ---- */
+const DOCS={
+privacy:{title:'プライバシーポリシー',body:`<p class="meta">最終更新: 2026年10月27日</p>
+<p>「Let's split the check」(以下「本サービス」)は、利用者の情報をできるだけ集めない作りにしています。</p>
+<h3>運営者が集めない情報</h3><p>氏名・メールアドレスなどの登録は不要です。アクセス解析、広告、Cookieも使いません。運営者のサーバーはなく、入力した内容が運営者に届くことはありません。</p>
+<h3>端末のブラウザに保存されるもの</h3><ul><li>イベント名、メンバーの名前、支払いの内容と金額</li><li>登録した振込先(銀行口座、PayPay、メモ)</li><li>設定(テーマ、文字サイズ、既定の通貨など)</li><li>アプリ本体の高速表示のためのキャッシュ</li></ul><p>これらは、お使いの端末のブラウザ内にだけ保存され、暗号化はされません。端末を他の人と共有している場合は、振込先の登録をお控えください。「設定」の「すべてのデータを削除」でいつでも消せます。</p>
+<h3>外部への通信</h3><ul><li><b>為替レート</b>: 外貨の換算のため、ExchangeRate-API(open.er-api.com)または Frankfurter に、通貨レートを問い合わせます。送るのは通常の通信情報(IPアドレスなど)のみで、金額やメンバー名は送りません。</li><li><b>部品の読み込み</b>: アイコン(Lucide)とレシート読み取り(Tesseract.js)を、unpkg・jsDelivr から読み込みます。レシートの日本語データは、読み取りを初めて使うときに Tesseract のサーバーから読み込まれます。</li><li><b>配信</b>: 本サービスは GitHub Pages で配信しており、GitHub がアクセスログを記録する場合があります。</li></ul>
+<h3>レシートの写真</h3><p>写真の文字の読み取りは、すべてお使いの端末の中で行います。写真は送信も保存もしません。</p>
+<h3>共有リンク</h3><p>共有リンクには、イベントの内容がリンクの中に含まれます(「#」以降の部分で、リンクを開いても配信サーバーには送られません)。リンクを知っている人は内容を見られるため、送る相手に気をつけてください。振込先は、リンクを作るときに含めるかを選べ、初期設定では含めません。LINEなどで送ると、そのサービスにも内容が渡ります。</p>
+<h3>お問い合わせ</h3><p>ご意見やご質問は、<a href="${ISSUES}" target="_blank" rel="noopener">GitHub の Issues</a> へお寄せください。個人情報は書かないでください。</p>
+<h3>変更</h3><p>必要に応じてこのポリシーを変更します。変更後はこのページに掲載します。</p>`},
+terms:{title:'利用規約',body:`<p class="meta">最終更新: 2026年10月27日</p>
+<h3>1. サービスの内容</h3><p>本サービスは、割り勘の計算を支援する無料のWebアプリです。会員登録は不要です。送金・決済の機能はなく、お金の移動は、利用者が自分の銀行アプリなどで行います。</p>
+<h3>2. 計算結果について</h3><ul><li>金額の計算・為替換算・レシートの読み取りは、参考情報です。振込の前に、必ず金額と宛先を確認してください。</li><li>為替レートは外部サービスから取得した目安で、実際の取引レートとは異なります。</li><li>レシートの読み取りは誤ることがあります。品名・金額を確認し、必要なら直してください。</li></ul>
+<h3>3. 禁止事項</h3><ul><li>法令や公序良俗に反する利用</li><li>他人の個人情報を、その人の同意なく入力・共有すること</li><li>本サービスや外部サービスに過度な負荷をかけること</li></ul>
+<h3>4. 免責</h3><p>本サービスは現状のまま提供します。計算の誤り、データの消失、振込先の誤りなど、本サービスの利用によって生じた損害について、運営者は責任を負いません。データはブラウザ内にあり、端末の変更や消去で失われることがあるため、大切な記録は「設定」のバックアップを使ってください。</p>
+<h3>5. 変更・停止</h3><p>運営者は、予告なく本サービスの内容を変更し、または提供を停止することがあります。</p>
+<h3>6. 規約の変更</h3><p>必要に応じてこの規約を変更します。変更後に利用した場合は、変更後の規約に同意したものとみなします。</p>
+<h3>7. 準拠法</h3><p>この規約は日本法に従って解釈されます。</p>`}};
+function viewDoc(k){
+  const d=DOCS[k]; document.title=d.title+" | Let's split the check";
+  return `${header(d.title,{back:'#/'})}<main class="doc"><div class="large-title" style="padding:8px 0"><h2 style="font-size:26px">${d.title}</h2></div>${d.body}</main>`;
+}
+function openSettings(){
+  const sw=(act,on,label,desc)=>`<div class="set-row"><span class="lbl">${label}<small>${desc}</small></span><button class="switch" role="switch" aria-checked="${on}" aria-label="${label}" data-act="${act}"><span></span></button></div>`;
+  const nPay=db.events.reduce((a,e)=>a+e.members.filter(hasPay).length,0);
+  sheet(`<div class="row2" style="justify-content:space-between;margin-bottom:4px"><h2 style="margin:0">設定</h2><button class="btn text sm" data-act="sheet-close">閉じる</button></div>
+  <h3 class="set-h">表示</h3>
+  <div class="set-row"><span class="lbl">テーマ<small>「端末に合わせる」は、スマホのダークモード設定に従います</small></span></div>
+  <div class="seg three" role="radiogroup" aria-label="テーマ" style="margin:8px 0">${[['system','端末に合わせる'],['light','ライト'],['dark','ダーク']].map(([v,l])=>`<button role="radio" aria-checked="${S.theme===v}" data-act="set-theme" data-v="${v}" style="font-size:14px">${l}</button>`).join('')}</div>
+  ${sw('set-big',S.big,'文字を大きくする','画面全体の文字を少し大きくします')}
+  <h3 class="set-h">計算</h3>
+  <div class="set-row"><span class="lbl">新しいイベントの通貨<small>イベントを作るときの、精算通貨の初期値</small></span><select class="input" id="set-cur" style="width:150px" aria-label="新しいイベントの通貨">${curOptions(S.defCur)}</select></div>
+  ${sw('set-auto',S.autoRates,'為替レートを自動で更新','オフにすると、「更新」ボタンを押したときだけ取得します')}
+  <h3 class="set-h">データ</h3>
+  <div class="set-row"><span class="lbl">バックアップ<small>イベント・支払い・振込先・設定をまとめて書き出します。機種変更のときに使います</small></span><div class="row2" style="flex:1 1 100%"><button class="btn tonal sm" data-act="bk-export">書き出す</button><button class="btn outline sm" data-act="bk-import">読み込む</button></div></div>
+  <div id="bk-box" hidden style="padding:8px 0"><textarea class="input" id="bk-text" aria-label="バックアップのテキスト" spellcheck="false"></textarea><div class="row2" style="margin-top:8px;flex-wrap:wrap"><button class="btn sm" data-act="bk-do" id="bk-do" hidden>この内容で置き換える</button><button class="btn tonal sm" data-act="bk-save" id="bk-save" hidden>${icon('download')}ファイルに保存</button><span class="hint" id="bk-msg" style="flex:1 1 180px;margin:0"></span></div></div>
+  <div class="set-row"><span class="lbl">振込先をすべて削除<small>${nPay}人分が登録されています。支払いの記録は残ります</small></span><button class="btn danger sm" data-act="wipe-pay" ${nPay?'':'disabled'}>削除</button></div>
+  <div class="set-row"><span class="lbl">すべてのデータを削除<small>このブラウザに保存した記録をすべて消します。元に戻せません</small></span><button class="btn danger sm" data-act="wipe">削除</button></div>
+  <h3 class="set-h">ヘルプ・規約</h3>
+  <details style="border-bottom:1px solid var(--outline-v)"><summary class="set-link" style="cursor:pointer;list-style:none;border:0">${icon('circle-help')}<span>使い方</span>${icon('chevron-down')}</summary><ol style="padding:0 0 12px 1.4em;margin:0">
+    <li><b>イベントを作る</b>: 名前・精算通貨・メンバーを入れます。</li>
+    <li><b>支払いを追加</b>: 立て替えた金額と人を入れ、「傾斜」で倍率を付けて分けます。外貨は通貨を選ぶと自動で換算します。</li>
+    <li><b>レシートで分ける</b>: 「品目別」でレシートを撮影すると品目を読み取ります。注文した人をタップで選びます。</li>
+    <li><b>精算</b>: 誰が誰にいくらか確認し、行をタップして振込先をコピーします。送金したら「送金済み」にします。</li></ol></details>
+  <a class="set-link" href="#/terms">${icon('file-text')}利用規約${icon('chevron-right')}</a>
+  <a class="set-link" href="#/privacy">${icon('shield-check')}プライバシーポリシー${icon('chevron-right')}</a>
+  <a class="set-link" href="${ISSUES}" target="_blank" rel="noopener">${icon('message-circle')}お問い合わせ・不具合報告${icon('external-link')}</a>
+  <p class="hint" style="margin-top:16px">バージョン ${APP_VERSION}<br>アイコン: <a href="https://lucide.dev" target="_blank" rel="noopener">Lucide</a>(ISC) ／ 文字認識: <a href="https://github.com/naptha/tesseract.js" target="_blank" rel="noopener">Tesseract.js</a>(Apache-2.0) ／ <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener">Rates By Exchange Rate API</a></p>`);
+}
+const BK_APP='lets-split-the-check';
+const wipeKeys=['wakekko.v1','wakekko.settings','wakekko.noinstall','wakekko.rates'];
 
 /* ---- イベント詳細 ---- */
 function viewEvent(ev,tab){
@@ -594,7 +690,7 @@ async function scanReceipt(file){
 const b64e=o=>{const b=new TextEncoder().encode(JSON.stringify(o));let s='';b.forEach(x=>s+=String.fromCharCode(x));return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')};
 const b64d=s=>JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0))));
 function importShared(data){
-  let ev; try{ev=b64d(data); if(!ev.name||!Array.isArray(ev.members)||!Array.isArray(ev.payments))throw 0}catch{toast('共有リンクを読み込めませんでした',true);history.replaceState(null,'','#/');render();return}
+  let ev; try{ev=b64d(data); if(!validEvent(ev))throw 0}catch{toast('共有リンクを読み込めませんでした',true);history.replaceState(null,'','#/');render();return}
   history.replaceState(null,'','#/'); app.innerHTML=viewHome(); window.lucide?.createIcons();
   sheet(`<h2>共有されたイベント</h2><p style="margin-bottom:16px">「${esc(ev.name)}」(${ev.members.length}人・${ev.payments.length}件)を自分の端末に追加しますか？</p>
     <div class="row2"><button class="btn outline block" data-act="sheet-close">キャンセル</button><button class="btn block" data-act="import-ok">追加する</button></div>`);
@@ -628,6 +724,31 @@ document.addEventListener('click',async e=>{
   const a=t.dataset.act, ev=R.id&&getEv(R.id), id=t.dataset.id, i=+t.dataset.i;
   switch(a){
   case 'sheet-close':closeSheet();break;
+  case 'settings':openSettings();break;
+  case 'set-theme':setS('theme',t.dataset.v);document.querySelectorAll('[data-act=set-theme]').forEach(b=>b.setAttribute('aria-checked',b===t));break;
+  case 'set-big':case 'set-auto':{const k=a==='set-big'?'big':'autoRates';const on=t.getAttribute('aria-checked')!=='true';t.setAttribute('aria-checked',on);setS(k,on);break;}
+  case 'bk-export':{
+    const txt=JSON.stringify({app:BK_APP,v:1,db,settings:S});
+    const box=$('#bk-box'),ta=$('#bk-text');box.hidden=false;$('#bk-do').hidden=true;$('#bk-save').hidden=false;ta.readOnly=true;ta.value=txt;ta.select();
+    try{await navigator.clipboard.writeText(txt);$('#bk-msg').textContent='コピーしました。メモなどに貼って保管してください。'}catch{$('#bk-msg').textContent='上の欄を全選択してコピーしてください。'}break;}
+  case 'bk-save':{
+    const blob=new Blob([$('#bk-text').value],{type:'application/json'}),a2=document.createElement('a');
+    a2.href=URL.createObjectURL(blob);a2.download='split-the-check-backup.json';document.body.append(a2);a2.click();a2.remove();break;}
+  case 'bk-import':{
+    const box=$('#bk-box'),ta=$('#bk-text');box.hidden=false;$('#bk-do').hidden=false;$('#bk-save').hidden=true;ta.readOnly=false;ta.value='';ta.placeholder='書き出したテキストを貼り付け';ta.focus();$('#bk-msg').textContent='今のデータは、読み込んだ内容で置き換わります。';break;}
+  case 'bk-do':{
+    try{
+      const j=JSON.parse($('#bk-text').value);
+      if(j?.app!==BK_APP||!Array.isArray(j.db?.events)||!j.db.events.every(validEvent))throw 0;
+      db={events:j.db.events};save();
+      if(j.settings&&typeof j.settings==='object'){S=Object.assign(S,{theme:['system','light','dark'].includes(j.settings.theme)?j.settings.theme:'system',big:!!j.settings.big,autoRates:j.settings.autoRates!==false});store.set('wakekko.settings',S);applyS()}
+      closeSheet();render();toast('読み込みました');
+    }catch{$('#bk-msg').textContent='読み込めませんでした。「書き出す」でコピーした内容を、そのまま貼り付けてください。'}break;}
+  case 'wipe-pay':case 'wipe':{
+    if(!t.dataset.armed){t.dataset.armed='1';const old=t.textContent;t.textContent='もう一度押す';setTimeout(()=>{if(t.isConnected){delete t.dataset.armed;t.textContent=old}},4000);break;}
+    if(a==='wipe-pay'){db.events.forEach(e=>e.members.forEach(m=>delete m.pay));save();closeSheet();render();toast('振込先を削除しました')}
+    else{wipeKeys.forEach(k=>{try{localStorage.removeItem(k)}catch{}});location.hash='#/';location.reload()}
+    break;}
   case 'install':if(deferredInstall){deferredInstall.prompt();await deferredInstall.userChoice;deferredInstall=null;render()}break;
   case 'install-x':store.set('wakekko.noinstall',true);render();break;
   case 'ev-new':openNewEvent();break;
@@ -740,6 +861,7 @@ document.addEventListener('change',e=>{
   }
   if(t.id==='file-cam'||t.id==='file-pick'){const f=t.files[0];t.value='';if(f)scanReceipt(f)}
   if(t.dataset.f==='mw'||t.dataset.f==='mname')render();
+  if(t.id==='set-cur')setS('defCur',t.value);
 });
 
 /* ================= 起動 ================= */

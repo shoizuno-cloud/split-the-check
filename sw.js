@@ -1,6 +1,6 @@
 /* アプリ本体は「ネット優先・失敗時はキャッシュ」で配信し、更新を取りこぼさない。
    為替APIなどの外部データはキャッシュしない(古いレートを出さないため)。 */
-const CACHE = 'lstc-v2';
+const CACHE = 'lstc-v3';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 const CDN = ['https://unpkg.com/', 'https://cdn.jsdelivr.net/'];
 

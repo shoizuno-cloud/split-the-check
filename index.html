@@ -217,6 +217,11 @@ textarea.input{min-height:96px;resize:vertical;font-size:14px}
 .doc h3{font-size:18px;margin:24px 0 4px;line-height:1.5}
 .doc p,.doc li{margin:4px 0}.doc ul{padding-left:1.4em}
 .doc .meta{color:var(--on2);font-size:14px}
+.combo{position:relative}
+.combo-list{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:5;margin:0;padding:4px 0;list-style:none;background:var(--bg);border:1px solid var(--outline);border-radius:var(--r-m);box-shadow:0 6px 18px rgba(0,0,0,.2);max-height:260px;overflow:auto}
+.combo-list li{display:flex;justify-content:space-between;gap:8px;align-items:center;min-height:48px;padding:6px 14px;cursor:pointer}
+.combo-list li small{color:var(--on2);font-size:13px;white-space:nowrap}
+.combo-list li:hover{background:var(--pc)}
 .rate-chip{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--on2);flex-wrap:wrap}
 .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 </style>
@@ -415,6 +420,14 @@ function installCard(){
   else return '';
   return `<div class="install" role="region" aria-label="ホーム画面への追加">${icon('smartphone')}<div class="grow"><b>ホーム画面に追加</b>${body}</div><button class="icon-btn" data-act="install-x" aria-label="この案内を閉じる" style="color:inherit;margin:-8px -8px 0 0">${icon('x')}</button></div>`;
 }
+function bankShow(){
+  const inp=$('#mp-bank'),ul=$('#bank-list'); if(!inp||!ul)return;
+  const cc=$('#mp-country').value, list=bankMatches(cc,inp.value);
+  const exact=list.length===1&&list[0].n===inp.value;
+  ul.innerHTML=list.map((b,i)=>`<li role="option" id="bk-${i}" data-act="pick-bank" data-v="${esc(b.n)}">${esc(b.n)}${cc?'':` <small>${b.c==='*'?'🌐 海外送金':flag(b.c)+' '+esc(ccName(b.c))}</small>`}</li>`).join('');
+  ul.hidden=!list.length||exact; inp.setAttribute('aria-expanded',String(!ul.hidden));
+}
+function bankHide(){const ul=$('#bank-list'),inp=$('#mp-bank');if(ul)ul.hidden=true;if(inp)inp.setAttribute('aria-expanded','false')}
 function curOptions(sel){
   const list=[...new Set([...POPULAR,...(rates?Object.keys(rates.table).filter(c=>{try{digits(c);return true}catch{return false}}).sort():[])])];
   return list.map(c=>`<option value="${c}" ${c===sel?'selected':''}>${c} ${esc(curNames.of(c)||'')}</option>`).join('');
@@ -516,7 +529,215 @@ function tabMembers(ev){
   return `<p class="sub" style="margin-bottom:12px">傾斜は「負担の重さ」の倍率です。例: 先輩 ×1.5、後輩 ×0.5。支払いごとにも変更できます。</p>${rows}
   <button class="btn tonal block" data-act="m-add">${icon('user-plus')}メンバーを追加</button>`;
 }
-const PAYF=[['bank','銀行名','例: ○○銀行'],['branch','支店名','例: 渋谷支店'],['type','口座種別','普通 / 当座'],['num','口座番号','例: 1234567'],['holder','口座名義(カナ)','例: タナカ タロウ'],['paypay','PayPay ID またはリンク','例: taro123 / https://pay.paypay.ne.jp/…'],['note','メモ','例: 現金でOK']];
+const PAYF=[['bank','銀行名','例: ○○銀行'],['branch','支店名','例: 渋谷支店'],['type','口座種別','普通 / 当座'],['num','口座番号','例: 1234567'],['swift','SWIFT/BIC・IBAN','海外の口座のとき'],['holder','口座名義(カナ)','例: タナカ タロウ'],['paypay','PayPay ID またはリンク','例: taro123 / https://pay.paypay.ne.jp/…'],['note','メモ','例: 現金でOK']];
+/* 国・地域と、よく使われる銀行・送金サービスの候補。読み(ひらがな・ローマ字)でも探せる */
+const COUNTRIES=[['JP','日本'],['US','アメリカ'],['GB','イギリス'],['EU','ユーロ圏'],['KR','韓国'],['CN','中国'],['TW','台湾'],['HK','香港'],['SG','シンガポール'],['TH','タイ'],['VN','ベトナム'],['PH','フィリピン'],['MY','マレーシア'],['ID','インドネシア'],['IN','インド'],['AU','オーストラリア'],['CA','カナダ']];
+const CUR_CC={JPY:'JP',USD:'US',GBP:'GB',EUR:'EU',KRW:'KR',CNY:'CN',TWD:'TW',HKD:'HK',SGD:'SG',THB:'TH',VND:'VN',PHP:'PH',MYR:'MY',IDR:'ID',INR:'IN',AUD:'AU',CAD:'CA'};
+const flag=cc=>cc==='EU'?'🇪🇺':String.fromCodePoint(...[...cc].map(c=>127397+c.charCodeAt(0)));
+const ccName=cc=>COUNTRIES.find(x=>x[0]===cc)?.[1]||cc;
+const BANK_DATA=`JP|みずほ銀行|みずほ mizuho
+JP|三菱UFJ銀行|みつびし ゆーえふじぇい mufg ufj bk
+JP|三井住友銀行|みついすみとも すみとも smbc
+JP|ゆうちょ銀行|ゆうちょ ゆうびん japan post yucho
+JP|楽天銀行|らくてん rakuten
+JP|PayPay銀行|ぺいぺい paypay じゃぱんねっと
+JP|住信SBIネット銀行|すみしん えすびーあい sbi net
+JP|ソニー銀行|そにー sony
+JP|auじぶん銀行|じぶん jibun au えーゆー
+JP|GMOあおぞらネット銀行|ぎーえむおー あおぞら gmo
+JP|りそな銀行|りそな resona
+JP|埼玉りそな銀行|さいたま りそな saitama resona
+JP|関西みらい銀行|かんさい みらい kansai mirai
+JP|三井住友信託銀行|しんたく smtb trust
+JP|SBI新生銀行|しんせい しんせい shinsei
+JP|あおぞら銀行|あおぞら aozora
+JP|イオン銀行|いおん aeon
+JP|セブン銀行|せぶん seven
+JP|ローソン銀行|ろーそん lawson
+JP|大和ネクスト銀行|だいわ daiwa next
+JP|横浜銀行|よこはま yokohama
+JP|千葉銀行|ちば chiba
+JP|福岡銀行|ふくおか fukuoka
+JP|静岡銀行|しずおか shizuoka
+JP|京都銀行|きょうと kyoto
+JP|広島銀行|ひろしま hiroshima
+JP|北海道銀行|ほっかいどう hokkaido
+JP|北洋銀行|ほくよう hokuyo
+JP|七十七銀行|ななじゅうなな 77
+JP|十六銀行|じゅうろく 16
+JP|常陽銀行|じょうよう joyo
+JP|滋賀銀行|しが shiga
+JP|中国銀行|ちゅうごく chugoku
+JP|伊予銀行|いよ iyo
+JP|百五銀行|ひゃくご 105
+JP|東邦銀行|とうほう toho
+JP|北陸銀行|ほくりく hokuriku
+JP|西日本シティ銀行|にしにほん しているい nishinihon city
+JP|紀陽銀行|きよう kiyo
+JP|群馬銀行|ぐんま gunma
+JP|足利銀行|あしかが ashikaga
+JP|八十二銀行|はちじゅうに 82
+JP|山口銀行|やまぐち yamaguchi
+JP|琉球銀行|りゅうきゅう ryukyu
+JP|沖縄銀行|おきなわ okinawa
+JP|愛知銀行|あいち aichi
+JP|名古屋銀行|なごや nagoya
+JP|大垣共立銀行|おおがき きょうりつ ogaki
+JP|池田泉州銀行|いけだ せんしゅう senshu
+JP|南都銀行|なんと nanto
+JP|山陰合同銀行|さんいん ごうどう sanin
+JP|肥後銀行|ひご higo
+JP|鹿児島銀行|かごしま kagoshima
+JP|十八親和銀行|じゅうはち しんわ
+JP|大分銀行|おおいた oita
+JP|宮崎銀行|みやざき miyazaki
+JP|青森銀行|あおもり aomori
+JP|秋田銀行|あきた akita
+JP|岩手銀行|いわて iwate
+JP|山形銀行|やまがた yamagata
+JP|第四北越銀行|だいし ほくえつ
+JP|京葉銀行|けいよう keiyo
+JP|武蔵野銀行|むさしの musashino
+JP|城南信用金庫|じょうなん しんきん jonan
+JP|信用金庫|しんよう しんきん shinkin
+JP|労働金庫(ろうきん)|ろうきん rokin
+JP|JAバンク(農協)|のうきょう じぇいえー ja agri
+US|Chase (JPMorgan Chase)|ちぇいす jpmorgan
+US|Bank of America|ばんくおぶあめりか bofa
+US|Wells Fargo|うぇるずふぁーご
+US|Citibank|してぃ citi
+US|U.S. Bank|ゆーえす us
+US|PNC Bank|pnc
+US|Capital One|きゃぴたるわん
+US|TD Bank|てぃーでぃー
+US|Truist|とらいすと
+US|Charles Schwab Bank|しゅわぶ
+US|Ally Bank|あり
+US|Navy Federal Credit Union|ねいびー
+US|Venmo|べんも
+US|Zelle|ぜる
+GB|Barclays|ばーくれいず
+GB|HSBC UK|えいちえすびーしー
+GB|Lloyds Bank|ろいず
+GB|NatWest|なっとうぇすと
+GB|Santander UK|さんたんでーる
+GB|Monzo|もんぞ
+GB|Starling Bank|すたーりんぐ
+GB|Nationwide|ねいしょんわいど
+GB|Halifax|はりふぁっくす
+EU|Deutsche Bank|どいちぇ
+EU|Commerzbank|こめるつ
+EU|N26|えぬ にじゅうろく
+EU|BNP Paribas|ぱりば
+EU|Société Générale|そしえて じぇねらる
+EU|Crédit Agricole|くれでぃ あぐりこる
+EU|ING|あいえぬじー
+EU|Santander|さんたんでーる
+EU|BBVA|びーびーぶいえー
+EU|Intesa Sanpaolo|いんてーさ
+EU|UniCredit|ゆにくれでぃっと
+KR|KB国民銀行|こくみん kookmin kb
+KR|新韓銀行|しんはん shinhan
+KR|ウリィ銀行|うり woori
+KR|ハナ銀行|はな hana
+KR|IBK企業銀行|きぎょう ibk
+KR|NH農協銀行|のうきょう nh
+KR|カカオバンク|かかお kakao
+KR|Kバンク|けーばんく kbank
+KR|トスバンク|とす toss
+CN|中国工商銀行|こうしょう icbc
+CN|中国建設銀行|けんせつ ccb
+CN|中国農業銀行|のうぎょう abc
+CN|中国銀行|ちゅうごく boc bank of china
+CN|交通銀行|こうつう
+CN|招商銀行|しょうしょう cmb
+CN|Alipay(支付宝)|ありぺい しふぉう
+CN|WeChat Pay(微信支付)|うぃーちゃっと うぇいしん
+TW|中国信託(CTBC)|ちゅうごくしんたく ctbc
+TW|台湾銀行|たいわん bank of taiwan
+TW|国泰世華銀行|こくたい cathay
+TW|富邦銀行|ふほう fubon
+TW|玉山銀行|ぎょくざん esun
+TW|台新銀行|たいしん taishin
+TW|兆豐銀行|ちょうほう mega
+TW|LINE Bank|らいん
+HK|HSBC 香港|えいちえすびーしー
+HK|恒生銀行|ほうせい hang seng
+HK|中国銀行(香港)|ちゅうごく boc hk
+HK|渣打銀行|さだ standard chartered
+HK|東亜銀行|とうあ bea
+HK|ZA Bank|ぜっとえー
+SG|DBS|でぃーびーえす
+SG|OCBC|おーしーびーしー
+SG|UOB|ゆーおーびー
+SG|Standard Chartered|すたんだーど ちゃーたーど
+SG|Trust Bank|とらすと
+SG|GXS Bank|じーえっくすえす
+SG|PayNow|ぺいなう
+TH|バンコク銀行(Bangkok Bank)|ばんこく
+TH|カシコン銀行(KBank)|かしこん kasikorn kbank
+TH|サイアム商業銀行(SCB)|さいあむ scb
+TH|クルンタイ銀行(Krungthai)|くるんたい
+TH|クルンシィ銀行(Krungsri)|くるんしぃ あゆたや
+TH|ttb(TMBThanachart)|てぃーてぃーびー
+TH|PromptPay|ぷろんぷとぺい
+VN|Vietcombank|べとこむばんく
+VN|VietinBank|べとちんばんく
+VN|BIDV|びーあいでぃーぶいー
+VN|Techcombank|てっくこむばんく
+VN|MB Bank|えむびー
+VN|ACB|えーしーびー
+VN|VPBank|ぶいぴーばんく
+PH|BDO|びーでぃーおー
+PH|BPI|びーぴーあい
+PH|Metrobank|めとろばんく
+PH|Landbank|らんどばんく
+PH|Security Bank|せきゅりてぃ
+PH|GCash|じーきゃっしゅ
+PH|Maya|まや
+MY|Maybank|めいばんく
+MY|CIMB Bank|しむびー
+MY|Public Bank|ぱぶりっく
+MY|RHB Bank|あーるえいちびー
+MY|Hong Leong Bank|ほんりょん
+MY|Touch 'n Go eWallet|たっちあんどごー tng
+ID|BCA|びーしーえー
+ID|Bank Mandiri|まんでぃり
+ID|BNI|びーえぬあい
+ID|BRI|びーあーるあい
+ID|CIMB Niaga|しむびー にあが
+ID|GoPay|ごーぺい
+ID|OVO|おぼ
+IN|State Bank of India (SBI)|えすびーあい
+IN|HDFC Bank|えいちでぃーえふしー
+IN|ICICI Bank|あいしーあいしーあい
+IN|Axis Bank|あくしす
+IN|Kotak Mahindra Bank|こたっく
+IN|Punjab National Bank|ぱんじゃぶ pnb
+IN|UPI|ゆーぴーあい
+AU|Commonwealth Bank (CommBank)|こもんうぇるす
+AU|Westpac|うぇすとぱっく
+AU|ANZ|えーえぬぜっと
+AU|NAB (National Australia Bank)|えぬえーびー
+AU|Macquarie Bank|まっこーりー
+AU|ING Australia|あいえぬじー
+CA|RBC (Royal Bank of Canada)|ろいやる
+CA|TD Canada Trust|てぃーでぃー
+CA|Scotiabank|すこしあ
+CA|BMO|びーえむおー
+CA|CIBC|しーあいびーしー
+*|Wise|わいず transferwise
+*|Revolut|れぼりゅーと revolut
+*|PayPal|ぺいぱる`;
+const BANKS=BANK_DATA.trim().split('\n').map(l=>{const [c,n,k]=l.split('|');return {c,n,k:k||''}});
+const kn=s=>s.normalize('NFKC').toLowerCase().replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-96));
+function bankMatches(cc,q){
+  const toks=kn(q).split(/\s+/).filter(Boolean);
+  const pool=BANKS.filter(b=>!cc||b.c===cc||b.c==='*');
+  const hit=pool.map(b=>({b,h:kn(b.n+' '+b.k)})).filter(x=>toks.every(t=>x.h.includes(t)));
+  if(toks.length)hit.sort((a,b)=>(b.h.startsWith(toks[0])-a.h.startsWith(toks[0])));
+  return hit.slice(0,8).map(x=>x.b);
+}
 const hasPay=m=>m.pay&&PAYF.some(([k])=>m.pay[k]);
 const stepper=(v,f,id,i='')=>`<span class="stepper"><button class="icon-btn" data-act="wstep" data-f="${f}" data-id="${id}" data-i="${i}" data-d="-0.5" aria-label="倍率を下げる">${icon('minus')}</button><input type="number" inputmode="decimal" step="0.1" min="0" data-f="${f}" data-id="${id}" data-i="${i}" value="${v}" aria-label="倍率"><button class="icon-btn" data-act="wstep" data-f="${f}" data-id="${id}" data-i="${i}" data-d="0.5" aria-label="倍率を上げる">${icon('plus')}</button></span>`;
 
@@ -710,7 +931,11 @@ function sheet(html){
   el.querySelector('input,select,button.btn')?.focus();
 }
 function closeSheet(){document.querySelector('.sheet-wrap')?.remove()}
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSheet()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){const ul=$('#bank-list');if(ul&&!ul.hidden){bankHide();return}closeSheet()}});
+document.addEventListener('focusin',e=>{if(e.target.id==='mp-bank')bankShow()});
+document.addEventListener('focusout',e=>{if(e.target.id==='mp-bank')setTimeout(bankHide,150)});
+/* 候補をタップしても入力欄のフォーカスが外れないようにする */
+['pointerdown','mousedown'].forEach(ev=>document.addEventListener(ev,e=>{if(e.target.closest('.combo-list'))e.preventDefault()}));
 let tt; function toast(msg,err){
   document.querySelector('.toast')?.remove();
   const t=document.createElement('div'); t.className='toast'; t.setAttribute('role','status');
@@ -799,24 +1024,37 @@ document.addEventListener('click',async e=>{
     if(navigator.share){try{await navigator.share({title:ev.name,url});break}catch{}}
     copy(url,'共有リンクをコピーしました');break;}
   case 'm-pay':{
-    const m=mem(ev,id), v=m.pay||{};
+    const m=mem(ev,id), v=m.pay||{}, cc=v.country||CUR_CC[ev.cur]||'';
+    const fld=(k,ph,extra='',cls='')=>{const l=PAYF.find(x=>x[0]===k)[1];return `<div class="field ${cls}"><label for="mp-${k}">${l}</label><input class="input" id="mp-${k}" data-k="${k}" value="${esc(v[k]||'')}" placeholder="${esc(ph)}" autocomplete="off" ${extra}></div>`};
     sheet(`<h2>${esc(m.name)}さんの振込先</h2><p class="hint" style="margin-bottom:16px">この端末にだけ保存されます。精算画面から、ワンタップでコピーできます。</p>
-      ${PAYF.map(([k,l,ph])=>`<div class="field"><label for="mp-${k}">${l}</label><input class="input" id="mp-${k}" data-k="${k}" value="${esc(v[k]||'')}" placeholder="${esc(ph)}" autocomplete="off" ${k==='num'?'inputmode="numeric"':''}></div>`).join('')}
+      <div class="field"><label for="mp-country">国・地域</label><p class="hint">選ぶと、銀行名の候補がその国に絞られます。</p>
+        <select class="input" id="mp-country" data-k="country"><option value="">すべて</option>${COUNTRIES.map(([c,n])=>`<option value="${c}" ${c===cc?'selected':''}>${flag(c)} ${n}</option>`).join('')}</select></div>
+      <div class="field"><label for="mp-bank">銀行名</label><p class="hint">入力すると候補が出ます。ひらがなやローマ字でも探せます。候補にない銀行は、そのまま入力できます。</p>
+        <div class="combo"><input class="input" id="mp-bank" data-k="bank" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="bank-list" value="${esc(v.bank||'')}" placeholder="例: みずほ / mizuho" autocomplete="off" enterkeyhint="next"><ul class="combo-list" id="bank-list" role="listbox" aria-label="銀行名の候補" hidden></ul></div></div>
+      ${fld('branch','例: 渋谷支店')}
+      <div class="field jp-only" ${cc&&cc!=='JP'?'hidden':''}><label for="mp-type">口座種別</label><input class="input" id="mp-type" data-k="type" value="${esc(v.type||'')}" placeholder="普通 / 当座" autocomplete="off"><div class="chips" style="margin-top:8px">${['普通','当座','貯蓄'].map(x=>`<button type="button" class="chip" data-act="pick-type" data-v="${x}" style="min-height:40px">${x}</button>`).join('')}</div></div>
+      ${fld('num','例: 1234567','inputmode="numeric"')}
+      ${fld('swift','例: MHCBJPJT / GB29NWBK60161331926819','autocapitalize="characters"','intl-only').replace('<div class="field intl-only"',`<div class="field intl-only" ${!cc||cc==='JP'?'hidden':''}`)}
+      ${fld('holder','例: タナカ タロウ / TARO TANAKA')}
+      ${fld('paypay','例: taro123 / https://pay.paypay.ne.jp/…')}
+      ${fld('note','例: 現金でOK')}
       <button class="btn block" data-act="mp-save" data-id="${id}">保存</button>`);break;}
+  case 'pick-bank':{const el=$('#mp-bank');el.value=t.dataset.v;bankHide();el.focus();break;}
+  case 'pick-type':$('#mp-type').value=t.dataset.v;break;
   case 'mp-save':{
     const m=mem(ev,id); const o={};
-    document.querySelectorAll('.sheet [data-k]').forEach(el=>{const x=el.value.trim();if(x)o[el.dataset.k]=x});
-    m.pay=Object.keys(o).length?o:undefined; save(); closeSheet(); render(); toast('振込先を保存しました');break;}
+    document.querySelectorAll('.sheet [data-k]').forEach(el=>{if(el.closest('[hidden]'))return;const x=el.value.trim();if(x)o[el.dataset.k]=x});
+    m.pay=PAYF.some(([k])=>o[k])?o:undefined; save(); closeSheet(); render(); toast('振込先を保存しました');break;}
   case 'xfer':{
     const tr=transfers(balances(ev))[i]; if(!tr)break;
     const to=mem(ev,tr.to), pay=to.pay||{}, amt=fmtMinor(tr.v,ev.cur), dn=ev.done?.[tr.from+'>'+tr.to]===tr.v;
     const raw=String(tr.v/10**digits(ev.cur));
     const kv=(k,v,copyable=true)=>`<div class="kv"><div><div class="k">${k}</div><div class="v">${esc(v)}</div></div>${copyable?`<button class="icon-btn" data-act="cp" data-v="${esc(v)}" aria-label="${k}をコピー">${icon('copy')}</button>`:''}</div>`;
     const ppUrl=/^https?:\/\//.test(pay.paypay||'')?pay.paypay:'';
-    const acct=[pay.bank,pay.branch,pay.type,pay.num,pay.holder].filter(Boolean);
+    const acct=[pay.bank,pay.branch,pay.type,pay.num,pay.swift,pay.holder].filter(Boolean);
     sheet(`<h2>${esc(mname(ev,tr.from))} → ${esc(to.name)}さん</h2>
       <div class="big-amt">${amt}<button class="btn tonal sm" data-act="cp" data-v="${raw}">${icon('copy')}金額をコピー</button></div>
-      <div style="margin:12px 0">${hasPay(to)?[pay.bank&&kv('銀行名',pay.bank),pay.branch&&kv('支店名',pay.branch),pay.type&&kv('口座種別',pay.type),pay.num&&kv('口座番号',pay.num),pay.holder&&kv('口座名義',pay.holder),pay.paypay&&kv('PayPay',pay.paypay),pay.note&&kv('メモ',pay.note,false)].filter(Boolean).join(''):
+      <div style="margin:12px 0">${hasPay(to)?[pay.country&&kv('国・地域',flag(pay.country)+' '+ccName(pay.country),false),pay.bank&&kv('銀行名',pay.bank),pay.branch&&kv('支店名',pay.branch),pay.type&&kv('口座種別',pay.type),pay.num&&kv('口座番号',pay.num),pay.swift&&kv('SWIFT/BIC・IBAN',pay.swift),pay.holder&&kv('口座名義',pay.holder),pay.paypay&&kv('PayPay',pay.paypay),pay.note&&kv('メモ',pay.note,false)].filter(Boolean).join(''):
         `<p class="sub" style="padding:12px 0">${esc(to.name)}さんの振込先が未登録です。</p><button class="btn outline sm" data-act="m-pay" data-id="${to.id}">${icon('landmark')}振込先を登録する</button>`}</div>
       <div class="grid2" style="margin-bottom:8px">${acct.length?`<button class="btn outline" data-act="cp" data-v="${esc(acct.join(' '))}">${icon('copy')}口座情報をまとめて</button>`:''}${ppUrl?`<a class="btn outline" href="${esc(ppUrl)}" target="_blank" rel="noopener">${icon('external-link')}PayPayを開く</a>`:''}</div>
       <button class="btn ${dn?'outline':''} block" data-act="done" data-i="${i}">${icon(dn?'undo-2':'circle-check')}${dn?'送金済みを取り消す':'送金済みにする'}</button>`);break;}
@@ -844,7 +1082,9 @@ document.addEventListener('click',async e=>{
 });
 function $$last(){const l=document.querySelectorAll('[data-f="iname"]');l[l.length-1]?.focus()}
 document.addEventListener('input',e=>{
-  const t=e.target, f=t.dataset.f; if(!f)return;
+  const t=e.target, f=t.dataset.f;
+  if(t.id==='mp-bank'){bankShow();return}
+  if(!f)return;
   const ev=R.id&&getEv(R.id);
   if(f==='mname'){mem(ev,t.dataset.id).name=t.value;save();return}
   if(f==='mw'){mem(ev,t.dataset.id).w=parseFloat(t.value)||0;save();return}
@@ -866,6 +1106,12 @@ document.addEventListener('change',e=>{
   if(t.id==='file-cam'||t.id==='file-pick'){const f=t.files[0];t.value='';if(f)scanReceipt(f)}
   if(t.dataset.f==='mw'||t.dataset.f==='mname')render();
   if(t.id==='set-cur')setS('defCur',t.value);
+  if(t.id==='mp-country'){
+    const jp=!t.value||t.value==='JP';
+    document.querySelector('.jp-only').hidden=!(!t.value||t.value==='JP');
+    document.querySelector('.intl-only').hidden=jp;
+    bankShow();
+  }
 });
 
 /* ================= 起動 ================= */

@@ -3,7 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0017C1">
+<meta name="theme-color" content="#0017C1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111216" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="割り勘">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="format-detection" content="telephone=no">
 <meta name="color-scheme" content="light dark">
 <title>Let's split the check</title>
 <meta name="description" content="傾斜・為替・レシート読み取りに対応した割り勘アプリ">
@@ -29,17 +38,19 @@
   --error:#FF8A8A; --ec:#3A1A1A; --ok:#7BD9A4; --okc:#17301F; --scrim:rgba(0,0,0,.6);
 }}
 *{box-sizing:border-box;margin:0}
-html{-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
+button,a,.chip,.row-link,select,label{touch-action:manipulation}
+button,.btn,.chip,.tabbar a,.icon-btn,.seg button{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 body{font:16px/1.7 var(--font);color:var(--on);background:var(--bg);-webkit-font-smoothing:antialiased}
 button,input,select,textarea{font:inherit;color:inherit}
 a{color:var(--primary)}
 .lucide{width:24px;height:24px;stroke-width:2;flex:none}
-.shell{max-width:640px;margin:0 auto;min-height:100dvh;padding-bottom:calc(96px + var(--sab));position:relative}
+.shell{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);max-width:640px;margin:0 auto;min-height:100dvh;padding-bottom:calc(96px + var(--sab));position:relative}
 .view{padding:0 16px 24px}
 :focus-visible{outline:4px solid var(--focus);outline-offset:2px;box-shadow:0 0 0 2px #1A1A1A}
 
 /* header */
-.topbar{display:flex;align-items:center;gap:8px;min-height:56px;padding:8px 8px 0;position:sticky;top:0;background:var(--bg);z-index:5}
+.topbar{padding-top:max(8px,env(safe-area-inset-top))!important;display:flex;align-items:center;gap:8px;min-height:56px;padding:8px 8px 0;position:sticky;top:0;background:var(--bg);z-index:5}
 .topbar h1{flex:1;font-size:17px;font-weight:700;text-align:center;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .topbar .actions{display:flex;min-width:48px;justify-content:flex-end}
 .large-title{padding:8px 16px 16px}
@@ -177,6 +188,9 @@ table.t th{font-size:13px;color:var(--on2);font-weight:700}
 .kv>div{flex:1;min-width:0}
 .big-amt{font-size:32px;font-weight:800;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.install{display:flex;gap:12px;align-items:flex-start;background:var(--pc);color:var(--on-pc);border-radius:var(--r-l);padding:14px 16px;margin-bottom:16px}
+.install .grow{flex:1}
+.install .btn{margin-top:8px}
 .rate-chip{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--on2);flex-wrap:wrap}
 .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 </style>
@@ -338,11 +352,24 @@ function viewHome(){
     return `<a class="row-link" href="#/e/${ev.id}/pay"><span class="av" style="--h:215">${icon('users','')}</span><span class="grow"><span class="t">${esc(ev.name)}</span><br><span class="sub">${ev.members.length}人 ・ ${ev.payments.length}件 ・ ${ev.cur}</span></span><span class="amount">${fmtMinor(tot,ev.cur)}</span>${icon('chevron-right')}</a>`;
   }).join('');
   return `<div class="large-title" style="padding-top:max(24px,env(safe-area-inset-top))"><h2>Let's split the check</h2><p>傾斜も為替もレシートも。割り勘をスムーズに。</p></div>
-  <main class="view">${db.events.length?`<h3 class="h3">イベント</h3><div class="list">${cards}</div>`:
+  <main class="view">${installCard()}${db.events.length?`<h3 class="h3">イベント</h3><div class="list">${cards}</div>`:
     `<div class="empty">${icon('hand-coins')}<h3>まずはイベントを作りましょう</h3><p>旅行・飲み会・ランチなど、割り勘したい集まりごとに作ります。</p>
      <ol class="steps"><li>メンバーを登録する</li><li>立て替えた支払いを記録する</li><li>「精算」で誰が誰にいくら払うか確認する</li></ol></div>`}
   </main>
   <button class="btn fab home" data-act="ev-new">${icon('plus')}イベントを作る</button>`;
+}
+let deferredInstall=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstall=e;if(R.v==='home')render()});
+window.addEventListener('appinstalled',()=>{deferredInstall=null;if(R.v==='home')render()});
+const isStandalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const isIOS=()=>/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+function installCard(){
+  if(isStandalone()||store.get('wakekko.noinstall',false))return '';
+  let body='';
+  if(deferredInstall)body=`<p>ホーム画面に追加すると、アプリのようにすぐ開けます。</p><button class="btn sm" data-act="install">${icon('smartphone')}ホーム画面に追加</button>`;
+  else if(isIOS())body=`<p>Safariの共有ボタン ${icon('share')} から「ホーム画面に追加」を選ぶと、アプリのようにすぐ開けます。</p>`;
+  else return '';
+  return `<div class="install" role="region" aria-label="ホーム画面への追加">${icon('smartphone')}<div class="grow"><b>ホーム画面に追加</b>${body}</div><button class="icon-btn" data-act="install-x" aria-label="この案内を閉じる" style="color:inherit;margin:-8px -8px 0 0">${icon('x')}</button></div>`;
 }
 function curOptions(sel){
   const list=[...new Set([...POPULAR,...(rates?Object.keys(rates.table).filter(c=>{try{digits(c);return true}catch{return false}}).sort():[])])];
@@ -601,6 +628,8 @@ document.addEventListener('click',async e=>{
   const a=t.dataset.act, ev=R.id&&getEv(R.id), id=t.dataset.id, i=+t.dataset.i;
   switch(a){
   case 'sheet-close':closeSheet();break;
+  case 'install':if(deferredInstall){deferredInstall.prompt();await deferredInstall.userChoice;deferredInstall=null;render()}break;
+  case 'install-x':store.set('wakekko.noinstall',true);render();break;
   case 'ev-new':openNewEvent();break;
   case 'ne-addrow':$('#ne-members').insertAdjacentHTML('beforeend',memberInput());$('#ne-members').lastElementChild.focus();break;
   case 'ne-submit':{
@@ -716,6 +745,7 @@ document.addEventListener('change',e=>{
 /* ================= 起動 ================= */
 window.addEventListener('load',()=>{
   render(); refreshRates();
+  if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').catch(()=>{});
   setInterval(()=>refreshRates(),10*60e3);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshRates()});
 });

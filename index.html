@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="format-detection" content="telephone=no">
 <meta name="color-scheme" content="light dark">
-<title>Let's split the check</title>
+<title>Let's split</title>
 <meta name="description" content="傾斜・為替・レシート読み取りに対応した割り勘アプリ">
 <style>
 /* ===== Design tokens =====
@@ -240,21 +240,92 @@ const uid=()=>Math.random().toString(36).slice(2,9);
 const icon=(n,c='')=>`<i data-lucide="${n}" class="${c}" aria-hidden="true"></i>`;
 const round=(x,d=2)=>Math.round(x*10**d)/10**d;
 const POPULAR=['JPY','USD','EUR','GBP','KRW','CNY','TWD','HKD','SGD','THB','VND','MYR','PHP','IDR','INR','AUD','NZD','CAD','CHF'];
-let curNames; try{curNames=new Intl.DisplayNames(['ja'],{type:'currency'})}catch{curNames={of:c=>c}}
+let curNames={of:c=>c}, regionNames=null;
 const dg={}; const digits=c=>dg[c]??=new Intl.NumberFormat('en',{style:'currency',currency:c}).resolvedOptions().maximumFractionDigits;
-const nf={}; const fmt=(v,c)=>(nf[c]??=new Intl.NumberFormat('ja-JP',{style:'currency',currency:c,minimumFractionDigits:digits(c),maximumFractionDigits:digits(c)})).format(v);
+const nf={}; const fmt=(v,c)=>(nf[c]??=new Intl.NumberFormat(LOCALE,{style:'currency',currency:c,minimumFractionDigits:digits(c),maximumFractionDigits:digits(c)})).format(v);
 const fmtMinor=(m,c)=>fmt(m/10**digits(c),c);
 const store={get(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}};
+
+/* ================= 多言語 =================
+   画面の文字は日本語を「鍵」にして、言語ファイル(lang/*.js)の辞書で置き換える。
+   描画後に MutationObserver が文字と属性(aria-label など)を翻訳するので、
+   画面のテンプレートは日本語のまま書ける。{0} {1} は可変部分のプレースホルダー。 */
+const LANGS=[['ja','日本語','ja-JP'],['en','English','en-US'],['ko','한국어','ko-KR'],['zh','简体中文','zh-CN']];
+let LANG='ja', LOCALE='ja-JP', L={}, PATS=[];
+function pickLang(){
+  const pref=store.get('wakekko.settings',{}).lang;
+  if(pref&&pref!=='auto'&&LANGS.some(x=>x[0]===pref))return pref;
+  for(const l of (navigator.languages||[navigator.language])){const c=(l||'').slice(0,2).toLowerCase();if(LANGS.some(x=>x[0]===c))return c}
+  return 'en';
+}
+const _=(k,...a)=>{let v=L.ui?.[k]??k;a.forEach((x,i)=>v=v.split('{'+i+'}').join(x));return v};
+function setIntl(){
+  try{curNames=new Intl.DisplayNames([LOCALE],{type:'currency'})}catch{}
+  try{regionNames=new Intl.DisplayNames([LOCALE],{type:'region'})}catch{}
+}
+function loadLang(){
+  LANG=pickLang(); LOCALE=LANGS.find(x=>x[0]===LANG)[2];
+  document.documentElement.lang=LANG; setIntl();
+  if(LANG==='ja')return Promise.resolve();
+  return new Promise(res=>{
+    const sc=document.createElement('script'); sc.src=`lang/${LANG}.js`;
+    sc.onload=()=>{
+      L=window.__L||{};
+      PATS=Object.keys(L.ui||{}).filter(k=>/\{\d\}/.test(k)).map(k=>{
+        const re=new RegExp('^'+k.split(/\{\d\}/).map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('(.+?)')+'$','s');
+        return [re,L.ui[k]];
+      });
+      res();
+    };
+    sc.onerror=()=>{LANG='ja';LOCALE='ja-JP';document.documentElement.lang='ja';setIntl();res()};
+    document.head.append(sc);
+  });
+}
+const JPRE=/[\u3041-\u3096\u30a1-\u30fa\u30fc\u3400-\u9fff]/, TR_ATTRS=['aria-label','placeholder','title','alt'];
+function trStr(core){
+  const d=L.ui; if(!d)return null;
+  if(core in d)return d[core];
+  for(const [re,val] of PATS){const m=core.match(re); if(m)return val.replace(/\{(\d)\}/g,(_,n)=>{const a=m[+n+1];return a in d?d[a]:a})}
+  return null;
+}
+const missing=new Set();
+function trText(n){
+  const core=n.nodeValue.replace(/\s+/g,' ').trim();
+  if(!core||!JPRE.test(core))return;
+  const r=trStr(core);
+  if(r==null)missing.add(core); else if(r!==core)n.nodeValue=n.nodeValue.replace(/\S[\s\S]*\S|\S/,()=>r);
+}
+function trTree(n){
+  if(n.nodeType===3){trText(n);return}
+  if(n.nodeType!==1||n.closest?.('[translate=no],textarea,script,style'))return;
+  TR_ATTRS.forEach(a=>trAttr(n,a));
+  n.childNodes.forEach(trTree);
+}
+function trAttr(el,a){
+  const v=el.getAttribute(a); if(!v||!JPRE.test(v))return;
+  const r=trStr(v.replace(/\s+/g,' ').trim()); if(r==null)missing.add(v); else if(r!==v)el.setAttribute(a,r);
+}
+function startI18n(){
+  if(LANG==='ja')return;
+  new MutationObserver(ms=>{for(const m of ms){
+    if(m.type==='childList')m.addedNodes.forEach(trTree);
+    else if(m.type==='characterData')trText(m.target);
+    else if(m.type==='attributes')trAttr(m.target,m.attributeName);
+  }}).observe(document.body,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:TR_ATTRS});
+  window.__missing=missing;
+}
+const SUBJECT=()=>encodeURIComponent(_("Let's split へのお問い合わせ"));
+const ocrLangs=()=>{const o=S.ocr&&S.ocr!=='auto'?S.ocr:({ja:'jpn',en:'eng',ko:'kor',zh:'chi_sim'})[LANG];return o==='eng'?'eng':o+'+eng'};
 
 /* ================= データ ================= */
 let db=store.get('wakekko.v1',{events:[]});
 const save=()=>store.set('wakekko.v1',db);
-let S=Object.assign({theme:'system',big:false,defCur:'JPY',autoRates:true},store.get('wakekko.settings',{}));
+let S=Object.assign({theme:'system',big:false,defCur:'JPY',autoRates:true,lang:'auto',ocr:'auto'},store.get('wakekko.settings',{}));
 function applyS(){const r=document.documentElement;S.theme==='system'?r.removeAttribute('data-theme'):r.setAttribute('data-theme',S.theme);r.classList.toggle('big',!!S.big)}
 const setS=(k,v)=>{S[k]=v;store.set('wakekko.settings',S);applyS()};
 applyS();
 const CONTACT='dev-jp@outlook.jp';
-const APP_VERSION='1.1(2026年10月27日)', ISSUES='https://github.com/shoizuno-cloud/split-the-check/issues';
+const APP_VERSION='1.2 (2026-10-28)', ISSUES='https://github.com/shoizuno-cloud/split-the-check/issues';
 /* 外から入ってくるデータ(バックアップ・共有リンク)は、形を確かめてから使う */
 function validEvent(e){
   try{
@@ -294,7 +365,7 @@ function rate(from,to){
   const t=rates?.table; if(!t||!t[from]||!t[to])return null;
   return Number((t[to]/t[from]).toPrecision(7));
 }
-const rateStamp=()=>rates?`${rates.source} ・ ${new Date(rates.updatedAt).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}時点`:'未取得';
+const rateStamp=()=>rates?_('{0} ・ {1}時点',rates.source,new Date(rates.updatedAt).toLocaleString(LOCALE,{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})):_('未取得');
 
 /* ================= 計算ロジック ================= */
 /* 最大剰余法で total(整数・最小通貨単位)を重み比に配分。合計が必ず一致する */
@@ -371,7 +442,7 @@ function render(){
   R=parseRoute();
   const key=JSON.stringify(R); const same=key===lastKey; lastKey=key;
   const y=scrollY; closeSheet();
-  document.title="Let's split the check";
+  document.title="Let's split";
   if(R.v==='import'){importShared(R.data);return}
   if(R.v!=='edit')D=null;
   let html='';
@@ -400,7 +471,7 @@ function viewHome(){
     const tot=ev.payments.reduce((a,p)=>a+calc(ev,p).totalMinor,0);
     return `<a class="row-link" href="#/e/${ev.id}/pay"><span class="av" style="--h:215">${icon('users','')}</span><span class="grow"><span class="t">${esc(ev.name)}</span><br><span class="sub">${ev.members.length}人 ・ ${ev.payments.length}件 ・ ${ev.cur}</span></span><span class="amount">${fmtMinor(tot,ev.cur)}</span>${icon('chevron-right')}</a>`;
   }).join('');
-  return `<div class="large-title" style="padding-top:max(24px,env(safe-area-inset-top));display:flex;gap:8px;align-items:flex-start"><div style="flex:1;min-width:0"><h2>Let's split the check</h2><p>傾斜も為替もレシートも。割り勘をスムーズに。</p></div><button class="icon-btn" data-act="settings" aria-label="設定" style="margin:-4px -8px 0 0">${icon('settings')}</button></div>
+  return `<div class="large-title" style="padding-top:max(24px,env(safe-area-inset-top));display:flex;gap:8px;align-items:flex-start"><div style="flex:1;min-width:0"><h2>Let's split</h2><p>傾斜も為替もレシートも。割り勘をスムーズに。</p></div><button class="icon-btn" data-act="settings" aria-label="設定" style="margin:-4px -8px 0 0">${icon('settings')}</button></div>
   <main class="view">${installCard()}${db.events.length?`<h3 class="h3">イベント</h3><div class="list">${cards}</div>`:
     `<div class="empty">${icon('hand-coins')}<h3>まずはイベントを作りましょう</h3><p>旅行・飲み会・ランチなど、割り勘したい集まりごとに作ります。</p>
      <ol class="steps"><li>メンバーを登録する</li><li>立て替えた支払いを記録する</li><li>「精算」で誰が誰にいくら払うか確認する</li></ol></div>`}
@@ -444,15 +515,15 @@ function openNewEvent(){
 const memberInput=()=>`<input class="input ne-m" placeholder="名前" maxlength="20" aria-label="メンバー名" autocomplete="off">`;
 
 /* ---- 規約・ポリシー ---- */
-const DOCS={
+const DOCS_JA={
 privacy:{title:'プライバシーポリシー',body:`<p class="meta">最終更新: 2026年10月27日</p>
-<p>「Let's split the check」(以下「本サービス」)は、利用者の情報をできるだけ集めない作りにしています。</p>
+<p>「Let's split」(以下「本サービス」)は、利用者の情報をできるだけ集めない作りにしています。</p>
 <h3>運営者が集めない情報</h3><p>氏名・メールアドレスなどの登録は不要です。アクセス解析、広告、Cookieも使いません。運営者のサーバーはなく、入力した内容が運営者に届くことはありません。</p>
 <h3>端末のブラウザに保存されるもの</h3><ul><li>イベント名、メンバーの名前、支払いの内容と金額</li><li>登録した振込先(銀行口座、PayPay、メモ)</li><li>設定(テーマ、文字サイズ、既定の通貨など)</li><li>アプリ本体の高速表示のためのキャッシュ</li></ul><p>これらは、お使いの端末のブラウザ内にだけ保存され、暗号化はされません。端末を他の人と共有している場合は、振込先の登録をお控えください。「設定」の「すべてのデータを削除」でいつでも消せます。</p>
 <h3>外部への通信</h3><ul><li><b>為替レート</b>: 外貨の換算のため、ExchangeRate-API(open.er-api.com)または Frankfurter に、通貨レートを問い合わせます。送るのは通常の通信情報(IPアドレスなど)のみで、金額やメンバー名は送りません。</li><li><b>部品の読み込み</b>: アイコン(Lucide)とレシート読み取り(Tesseract.js)を、unpkg・jsDelivr から読み込みます。レシートの日本語データは、読み取りを初めて使うときに Tesseract のサーバーから読み込まれます。</li><li><b>配信</b>: 本サービスは GitHub Pages で配信しており、GitHub がアクセスログを記録する場合があります。</li></ul>
 <h3>レシートの写真</h3><p>写真の文字の読み取りは、すべてお使いの端末の中で行います。写真は送信も保存もしません。</p>
 <h3>共有リンク</h3><p>共有リンクには、イベントの内容がリンクの中に含まれます(「#」以降の部分で、リンクを開いても配信サーバーには送られません)。リンクを知っている人は内容を見られるため、送る相手に気をつけてください。振込先は、リンクを作るときに含めるかを選べ、初期設定では含めません。LINEなどで送ると、そのサービスにも内容が渡ります。</p>
-<h3>お問い合わせ</h3><p>ご意見やご質問は、<a href="mailto:${CONTACT}?subject=${encodeURIComponent('Let\'s split the check へのお問い合わせ')}">${CONTACT}</a> までお送りください。不具合のご報告は <a href="${ISSUES}" target="_blank" rel="noopener">GitHub の Issues</a> でも受け付けています(公開の場なので、個人情報は書かないでください)。お問い合わせでいただいたメールアドレスなどは、返信のためだけに使います。</p>
+<h3>お問い合わせ</h3><p>ご意見やご質問は、<a href="mailto:${CONTACT}?subject=${SUBJECT()}">${CONTACT}</a> までお送りください。不具合のご報告は <a href="${ISSUES}" target="_blank" rel="noopener">GitHub の Issues</a> でも受け付けています(公開の場なので、個人情報は書かないでください)。お問い合わせでいただいたメールアドレスなどは、返信のためだけに使います。</p>
 <h3>変更</h3><p>必要に応じてこのポリシーを変更します。変更後はこのページに掲載します。</p>`},
 terms:{title:'利用規約',body:`<p class="meta">最終更新: 2026年10月27日</p>
 <h3>1. サービスの内容</h3><p>本サービスは、割り勘の計算を支援する無料のWebアプリです。会員登録は不要です。送金・決済の機能はなく、お金の移動は、利用者が自分の銀行アプリなどで行います。</p>
@@ -463,36 +534,39 @@ terms:{title:'利用規約',body:`<p class="meta">最終更新: 2026年10月27�
 <h3>6. 規約の変更</h3><p>必要に応じてこの規約を変更します。変更後に利用した場合は、変更後の規約に同意したものとみなします。</p>
 <h3>7. 準拠法</h3><p>この規約は日本法に従って解釈されます。</p>`}};
 function viewDoc(k){
-  const d=DOCS[k]; document.title=d.title+" | Let's split the check";
+  const d=(L.docs?L.docs({ISSUES,CONTACT,SUBJECT:SUBJECT()}):DOCS_JA)[k]; document.title=d.title+" | Let's split";
   return `${header(d.title,{back:'#/'})}<main class="doc"><div class="large-title" style="padding:8px 0"><h2 style="font-size:26px">${d.title}</h2></div>${d.body}</main>`;
 }
+const HOWTO_JA=`
+    <li><b>イベントを作る</b>: 名前・精算通貨・メンバーを入れます。</li>
+    <li><b>支払いを追加</b>: 立て替えた金額と人を入れ、「傾斜」で倍率を付けて分けます。外貨は通貨を選ぶと自動で換算します。</li>
+    <li><b>レシートで分ける</b>: 「品目別」でレシートを撮影すると品目を読み取ります。注文した人をタップで選びます。</li>
+    <li><b>精算</b>: 誰が誰にいくらか確認し、行をタップして振込先をコピーします。送金したら「送金済み」にします。</li>`;
 function openSettings(){
   const sw=(act,on,label,desc)=>`<div class="set-row"><span class="lbl">${label}<small>${desc}</small></span><button class="switch" role="switch" aria-checked="${on}" aria-label="${label}" data-act="${act}"><span></span></button></div>`;
   const nPay=db.events.reduce((a,e)=>a+e.members.filter(hasPay).length,0);
   sheet(`<div class="row2" style="justify-content:space-between;margin-bottom:4px"><h2 style="margin:0">設定</h2><button class="btn text sm" data-act="sheet-close">閉じる</button></div>
   <h3 class="set-h">表示</h3>
+  <div class="set-row"><span class="lbl">言語<small>表示する言語です。「自動」は端末の言語に合わせます</small></span><select class="input" id="set-lang" style="width:150px" aria-label="言語"><option value="auto" ${S.lang==='auto'?'selected':''}>自動</option>${LANGS.map(([c,n])=>`<option value="${c}" ${S.lang===c?'selected':''}>${n}</option>`).join('')}</select></div>
   <div class="set-row"><span class="lbl">テーマ<small>「端末に合わせる」は、スマホのダークモード設定に従います</small></span></div>
   <div class="seg three" role="radiogroup" aria-label="テーマ" style="margin:8px 0">${[['system','端末に合わせる'],['light','ライト'],['dark','ダーク']].map(([v,l])=>`<button role="radio" aria-checked="${S.theme===v}" data-act="set-theme" data-v="${v}" style="font-size:14px">${l}</button>`).join('')}</div>
   ${sw('set-big',S.big,'文字を大きくする','画面全体の文字を少し大きくします')}
   <h3 class="set-h">計算</h3>
   <div class="set-row"><span class="lbl">新しいイベントの通貨<small>イベントを作るときの、精算通貨の初期値</small></span><select class="input" id="set-cur" style="width:150px" aria-label="新しいイベントの通貨">${curOptions(S.defCur)}</select></div>
   ${sw('set-auto',S.autoRates,'為替レートを自動で更新','オフにすると、「更新」ボタンを押したときだけ取得します')}
+  <div class="set-row"><span class="lbl">レシートの言語<small>レシートの文字を読み取るときの言語です。「自動」はアプリの言語に合わせます</small></span><select class="input" id="set-ocr" style="width:150px" aria-label="レシートの言語"><option value="auto" ${S.ocr==='auto'?'selected':''}>自動</option>${[['jpn','日本語'],['eng','English'],['kor','한국어'],['chi_sim','简体中文'],['chi_tra','繁體中文'],['tha','ไทย']].map(([c,n])=>`<option value="${c}" ${S.ocr===c?'selected':''}>${n}</option>`).join('')}</select></div>
   <h3 class="set-h">データ</h3>
   <div class="set-row"><span class="lbl">バックアップ<small>イベント・支払い・振込先・設定をまとめて書き出します。機種変更のときに使います</small></span><div class="row2" style="flex:1 1 100%"><button class="btn tonal sm" data-act="bk-export">書き出す</button><button class="btn outline sm" data-act="bk-import">読み込む</button></div></div>
   <div id="bk-box" hidden style="padding:8px 0"><textarea class="input" id="bk-text" aria-label="バックアップのテキスト" spellcheck="false"></textarea><div class="row2" style="margin-top:8px;flex-wrap:wrap"><button class="btn sm" data-act="bk-do" id="bk-do" hidden>この内容で置き換える</button><button class="btn tonal sm" data-act="bk-save" id="bk-save" hidden>${icon('download')}ファイルに保存</button><span class="hint" id="bk-msg" style="flex:1 1 180px;margin:0"></span></div></div>
   <div class="set-row"><span class="lbl">振込先をすべて削除<small>${nPay}人分が登録されています。支払いの記録は残ります</small></span><button class="btn danger sm" data-act="wipe-pay" ${nPay?'':'disabled'}>削除</button></div>
   <div class="set-row"><span class="lbl">すべてのデータを削除<small>このブラウザに保存した記録をすべて消します。元に戻せません</small></span><button class="btn danger sm" data-act="wipe">削除</button></div>
   <h3 class="set-h">ヘルプ・規約</h3>
-  <details style="border-bottom:1px solid var(--outline-v)"><summary class="set-link" style="cursor:pointer;list-style:none;border:0">${icon('circle-help')}<span>使い方</span>${icon('chevron-down')}</summary><ol style="padding:0 0 12px 1.4em;margin:0">
-    <li><b>イベントを作る</b>: 名前・精算通貨・メンバーを入れます。</li>
-    <li><b>支払いを追加</b>: 立て替えた金額と人を入れ、「傾斜」で倍率を付けて分けます。外貨は通貨を選ぶと自動で換算します。</li>
-    <li><b>レシートで分ける</b>: 「品目別」でレシートを撮影すると品目を読み取ります。注文した人をタップで選びます。</li>
-    <li><b>精算</b>: 誰が誰にいくらか確認し、行をタップして振込先をコピーします。送金したら「送金済み」にします。</li></ol></details>
+  <details style="border-bottom:1px solid var(--outline-v)"><summary class="set-link" style="cursor:pointer;list-style:none;border:0">${icon('circle-help')}<span>使い方</span>${icon('chevron-down')}</summary><ol style="padding:0 0 12px 1.4em;margin:0">${L.howto||HOWTO_JA}</ol></details>
   <a class="set-link" href="#/terms">${icon('file-text')}利用規約${icon('chevron-right')}</a>
   <a class="set-link" href="#/privacy">${icon('shield-check')}プライバシーポリシー${icon('chevron-right')}</a>
   <h3 class="set-h">お問い合わせ</h3>
   <p class="hint" style="margin:8px 0">ご意見・不具合のご報告は、こちらへお送りください。</p>
-  <div class="row2" style="flex-wrap:wrap"><span class="v" style="flex:1 1 180px;font-weight:700;overflow-wrap:anywhere">${CONTACT}</span><button class="btn tonal sm" data-act="cp" data-v="${CONTACT}">${icon('copy')}コピー</button><a class="btn outline sm" href="mailto:${CONTACT}?subject=${encodeURIComponent("Let's split the check へのお問い合わせ")}">${icon('mail')}メールを作成</a></div>
+  <div class="row2" style="flex-wrap:wrap"><span class="v" style="flex:1 1 180px;font-weight:700;overflow-wrap:anywhere">${CONTACT}</span><button class="btn tonal sm" data-act="cp" data-v="${CONTACT}">${icon('copy')}コピー</button><a class="btn outline sm" href="mailto:${CONTACT}?subject=${SUBJECT()}">${icon('mail')}メールを作成</a></div>
   <a class="set-link" href="${ISSUES}" target="_blank" rel="noopener" style="margin-top:8px">${icon('message-circle')}不具合を GitHub で報告${icon('external-link')}</a>
   <p class="hint" style="margin-top:16px">バージョン ${APP_VERSION}<br>アイコン: <a href="https://lucide.dev" target="_blank" rel="noopener">Lucide</a>(ISC) ／ 文字認識: <a href="https://github.com/naptha/tesseract.js" target="_blank" rel="noopener">Tesseract.js</a>(Apache-2.0) ／ <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener">Rates By Exchange Rate API</a></p>`);
 }
@@ -529,12 +603,12 @@ function tabMembers(ev){
   return `<p class="sub" style="margin-bottom:12px">傾斜は「負担の重さ」の倍率です。例: 先輩 ×1.5、後輩 ×0.5。支払いごとにも変更できます。</p>${rows}
   <button class="btn tonal block" data-act="m-add">${icon('user-plus')}メンバーを追加</button>`;
 }
-const PAYF=[['bank','銀行名','例: ○○銀行'],['branch','支店名','例: 渋谷支店'],['type','口座種別','普通 / 当座'],['num','口座番号','例: 1234567'],['swift','SWIFT/BIC・IBAN','海外の口座のとき'],['holder','口座名義(カナ)','例: タナカ タロウ'],['paypay','PayPay ID またはリンク','例: taro123 / https://pay.paypay.ne.jp/…'],['note','メモ','例: 現金でOK']];
+const PAYF=[['bank','銀行名','例: ○○銀行'],['branch','支店名','例: 渋谷支店'],['type','口座種別','普通 / 当座'],['num','口座番号','例: 1234567'],['swift','SWIFT/BIC / IBAN','海外の口座のとき'],['holder','口座名義(カナ)','例: タナカ タロウ'],['paypay','PayPay ID またはリンク','例: taro123 / https://pay.paypay.ne.jp/…'],['note','メモ','例: 現金でOK']];
 /* 国・地域と、よく使われる銀行・送金サービスの候補。読み(ひらがな・ローマ字)でも探せる */
 const COUNTRIES=[['JP','日本'],['US','アメリカ'],['GB','イギリス'],['EU','ユーロ圏'],['KR','韓国'],['CN','中国'],['TW','台湾'],['HK','香港'],['SG','シンガポール'],['TH','タイ'],['VN','ベトナム'],['PH','フィリピン'],['MY','マレーシア'],['ID','インドネシア'],['IN','インド'],['AU','オーストラリア'],['CA','カナダ']];
 const CUR_CC={JPY:'JP',USD:'US',GBP:'GB',EUR:'EU',KRW:'KR',CNY:'CN',TWD:'TW',HKD:'HK',SGD:'SG',THB:'TH',VND:'VN',PHP:'PH',MYR:'MY',IDR:'ID',INR:'IN',AUD:'AU',CAD:'CA'};
 const flag=cc=>cc==='EU'?'🇪🇺':String.fromCodePoint(...[...cc].map(c=>127397+c.charCodeAt(0)));
-const ccName=cc=>COUNTRIES.find(x=>x[0]===cc)?.[1]||cc;
+const ccName=cc=>LANG==='ja'?(COUNTRIES.find(x=>x[0]===cc)?.[1]||cc):(regionNames?.of(cc)||cc);
 const BANK_DATA=`JP|みずほ銀行|みずほ mizuho
 JP|三菱UFJ銀行|みつびし ゆーえふじぇい mufg ufj bk
 JP|三井住友銀行|みついすみとも すみとも smbc
@@ -755,7 +829,7 @@ function tabSettle(ev){
 }
 function resultText(ev){
   const b=balances(ev),tr=transfers(b),tot=ev.payments.reduce((a,p)=>a+calc(ev,p).totalMinor,0);
-  return `【${ev.name}】精算結果\n合計 ${fmtMinor(tot,ev.cur)}\n`+(tr.length?tr.map(t=>`${mname(ev,t.from)} → ${mname(ev,t.to)}  ${fmtMinor(t.v,ev.cur)}`).join('\n'):'精算不要です')+"\n\n(Let's split the check で計算)";
+  return _('【{0}】精算結果',ev.name)+'\n'+_('合計 {0}',fmtMinor(tot,ev.cur))+'\n'+(tr.length?tr.map(x=>`${mname(ev,x.from)} → ${mname(ev,x.to)}  ${fmtMinor(x.v,ev.cur)}`).join('\n'):_('精算不要です'))+'\n\n'+_("(Let's split で計算)");
 }
 
 /* ================= 支払い編集 ================= */
@@ -828,7 +902,7 @@ function updateEditor(){
   const note=$('#amount-note');
   if(note){
     if(D.mode==='items'){const s=itemsSum(),d=round(p.amount-s,4);
-      note.textContent=s?`品目合計 ${fmt(s,D.cur)}${d?` ＋ 税・サービス料等 ${fmt(d,D.cur)}`:''}${D.amountAuto?'(品目合計と同額)':''}`:'品目を入れると合計が自動で入ります。レシートの合計(税込)を直接入力することもできます。';
+      note.textContent=s?_('品目合計 {0}',fmt(s,D.cur))+(d?_(' ＋ 税・サービス料等 {0}',fmt(d,D.cur)):'')+(D.amountAuto?_('(品目合計と同額)'):''):_('品目を入れると合計が自動で入ります。レシートの合計(税込)を直接入力することもできます。');
     }else note.textContent='';
   }
   const rn=$('#rate-note'); if(rn)rn.textContent=D.rateManual?'手動で入力したレートです':(D.rate?`自動取得 ・ ${rateStamp()}`:'レートを取得できていません。数値を入力してください');
@@ -854,7 +928,7 @@ function savePayment(){
   else if(p.mode==='items'&&!p.items.length)e='品目を1つ以上入力してください。';
   $('#form-err').innerHTML=e?`<p class="err" role="alert">${icon('circle-alert')}${e}</p>`:''; window.lucide?.createIcons();
   if(e)return;
-  p.title=p.title||'支払い';
+  p.title=p.title||({ja:'支払い',en:'Payment',ko:'결제',zh:'付款'})[LANG];
   const i=ev.payments.findIndex(x=>x.id===p.id);
   if(i>=0)ev.payments[i]=p; else ev.payments.push(p);
   save(); toast('保存しました'); go(`/e/${ev.id}/pay`);
@@ -873,15 +947,16 @@ async function prep(file){
 }
 function parseReceipt(text){
   const items=[]; let total=null;
-  const TOTAL=/(合計|お会計|会計|ご請求|お支払|TOTAL)/i, SKIP=/(小計|お預|預り|釣|現金|税|TEL|電話|領収|伝票|番号|ポイント|対象|クレジット|カード|点数|お客|様|担当|レジ|登録|〒|http|\d+年|\d+月|\d+日|\d+:\d+)/i;
+  const TOTAL=/(合計|合计|お会計|会計|ご請求|お支払|総計|总计|總計|합계|합 계|결제금액|\bTOTAL\b|amount due|balance due)/i, SUB=/(小計|小计|소계|sub ?total)/i;
+  const SKIP=/(小計|お預|預り|釣|現金|税|TEL|電話|領収|伝票|番号|ポイント|対象|クレジット|カード|点数|お客|様|担当|レジ|登録|〒|http|\d+年|\d+月|\d+日|\d+:\d+|小计|现金|找零|发票|收银|电话|税额|부가세|세금|현금|카드|전화|\b(?:tax|vat|gst|change|cash|card|visa|mastercard|tip|tel|phone|receipt|invoice|date|time|thank)\b)/i;
   const NUM=/^(.*?)\s*[¥\\]?\s*(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)\s*(?:円|\*|※|-)?\s*$/;
   for(const raw of text.split('\n')){
     const line=raw.normalize('NFKC').replace(/\s+/g,' ').trim(); if(!line)continue;
     const m=line.match(NUM); if(!m)continue;
     const price=parseFloat(m[2].replace(/,/g,'')); if(!(price>0&&price<1e6))continue;
     let name=m[1].replace(/(?<=[　-鿿＀-￯]) (?=[　-鿿＀-￯])/g,'').replace(/[¥\\\s:：.\-*]+$/,'').trim();
-    if(TOTAL.test(line)&&!/小計/.test(line)){total=Math.max(total||0,price);continue}
-    if(SKIP.test(line)||!/\D/.test(name)||name.length<1)continue;
+    if(TOTAL.test(line)&&!SUB.test(line)){total=Math.max(total||0,price);continue}
+    if(SUB.test(line)||SKIP.test(line)||!/\D/.test(name)||name.length<1)continue;
     items.push({id:uid(),name,price:String(price),who:[]});
   }
   return {items,total};
@@ -894,14 +969,14 @@ async function scanReceipt(file){
     const canvas=await prep(file);
     if(!window.Tesseract){upd('読み取りエンジンを読み込み中…',3);await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js')}
     const st={'loading tesseract core':'エンジンを準備中…','loading language traineddata':'日本語データを読み込み中…','initializing api':'準備中…','recognizing text':'文字を読み取り中…'};
-    const {data}=await Tesseract.recognize(canvas,'jpn+eng',{logger:m=>upd(st[m.status]||m.status,Math.round(m.progress*100))});
+    const {data}=await Tesseract.recognize(canvas,ocrLangs(),{logger:m=>upd(st[m.status]||m.status,Math.round(m.progress*100))});
     if(D!==my)return;
     const r=parseReceipt(data.text);
     if(!r.items.length){my.scan={...my.scan,state:'error',msg:'品目を読み取れませんでした。明るい場所でまっすぐ撮影するか、手入力してください。'};if(!my.items.length)my.items.push({id:uid(),name:'',price:'',who:[]})}
     else{
       my.items=[...my.items,...r.items];
       if(r.total){my.amount=String(r.total);my.amountAuto=false}else my.amountAuto=true;
-      if(!my.title)my.title='レシート';
+      if(!my.title)my.title=({ja:'レシート',en:'Receipt',ko:'영수증',zh:'小票'})[LANG];
       my.scan={...my.scan,state:'done'};
     }
   }catch(e){
@@ -993,14 +1068,14 @@ document.addEventListener('click',async e=>{
     sheet(`<h2>イベント設定</h2><div class="field"><label for="es-name">イベント名</label><input class="input" id="es-name" value="${esc(ev.name)}" maxlength="40"></div>
       <button class="btn block" data-act="es-save" style="margin-bottom:12px">保存</button><button class="btn danger block" data-act="es-del">${icon('trash-2')}このイベントを削除</button>`);break;
   case 'es-save':ev.name=$('#es-name').value.trim()||ev.name;save();closeSheet();render();break;
-  case 'es-del':if(confirm(`「${ev.name}」を削除します。元に戻せません。よろしいですか？`)){db.events=db.events.filter(x=>x!==ev);save();closeSheet();go('/')}break;
+  case 'es-del':if(confirm(_('「{0}」を削除します。元に戻せません。よろしいですか？',ev.name))){db.events=db.events.filter(x=>x!==ev);save();closeSheet();go('/')}break;
   case 'm-add':
     sheet(`<h2>メンバーを追加</h2><div class="field"><label for="ma-name">名前<span class="tag req">必須</span></label><input class="input" id="ma-name" maxlength="20" autocomplete="off"></div><div id="ma-err"></div><button class="btn block" data-act="ma-ok">追加</button>`);break;
   case 'ma-ok':{const n=$('#ma-name').value.trim();
     const err=!n?'名前を入力してください。':ev.members.some(m=>m.name===n)?'同じ名前のメンバーがいます。':'';
     $('#ma-err').innerHTML=err?`<p class="err" role="alert">${icon('circle-alert')}${err}</p>`:'';window.lucide?.createIcons({nodes:[$('#ma-err')]});
     if(err)return; ev.members.push({id:uid(),name:n,w:1});save();closeSheet();render();break;}
-  case 'm-del':if(!t.disabled&&confirm('このメンバーを削除しますか？')){ev.members=ev.members.filter(m=>m.id!==id);save();render()}break;
+  case 'm-del':if(!t.disabled&&confirm(_('このメンバーを削除しますか？'))){ev.members=ev.members.filter(m=>m.id!==id);save();render()}break;
   case 'wstep':{
     const f=t.dataset.f, inp=document.querySelector(`input[data-f="${f}"][data-id="${id}"]`);
     const v=Math.max(0,round((parseFloat(inp.value)||0)+parseFloat(t.dataset.d),2));
@@ -1028,7 +1103,7 @@ document.addEventListener('click',async e=>{
     const fld=(k,ph,extra='',cls='')=>{const l=PAYF.find(x=>x[0]===k)[1];return `<div class="field ${cls}"><label for="mp-${k}">${l}</label><input class="input" id="mp-${k}" data-k="${k}" value="${esc(v[k]||'')}" placeholder="${esc(ph)}" autocomplete="off" ${extra}></div>`};
     sheet(`<h2>${esc(m.name)}さんの振込先</h2><p class="hint" style="margin-bottom:16px">この端末にだけ保存されます。精算画面から、ワンタップでコピーできます。</p>
       <div class="field"><label for="mp-country">国・地域</label><p class="hint">選ぶと、銀行名の候補がその国に絞られます。</p>
-        <select class="input" id="mp-country" data-k="country"><option value="">すべて</option>${COUNTRIES.map(([c,n])=>`<option value="${c}" ${c===cc?'selected':''}>${flag(c)} ${n}</option>`).join('')}</select></div>
+        <select class="input" id="mp-country" data-k="country"><option value="">すべて</option>${COUNTRIES.map(([c,n])=>`<option value="${c}" ${c===cc?'selected':''}>${flag(c)} ${ccName(c)}</option>`).join('')}</select></div>
       <div class="field"><label for="mp-bank">銀行名</label><p class="hint">入力すると候補が出ます。ひらがなやローマ字でも探せます。候補にない銀行は、そのまま入力できます。</p>
         <div class="combo"><input class="input" id="mp-bank" data-k="bank" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="bank-list" value="${esc(v.bank||'')}" placeholder="例: みずほ / mizuho" autocomplete="off" enterkeyhint="next"><ul class="combo-list" id="bank-list" role="listbox" aria-label="銀行名の候補" hidden></ul></div></div>
       ${fld('branch','例: 渋谷支店')}
@@ -1054,7 +1129,7 @@ document.addEventListener('click',async e=>{
     const acct=[pay.bank,pay.branch,pay.type,pay.num,pay.swift,pay.holder].filter(Boolean);
     sheet(`<h2>${esc(mname(ev,tr.from))} → ${esc(to.name)}さん</h2>
       <div class="big-amt">${amt}<button class="btn tonal sm" data-act="cp" data-v="${raw}">${icon('copy')}金額をコピー</button></div>
-      <div style="margin:12px 0">${hasPay(to)?[pay.country&&kv('国・地域',flag(pay.country)+' '+ccName(pay.country),false),pay.bank&&kv('銀行名',pay.bank),pay.branch&&kv('支店名',pay.branch),pay.type&&kv('口座種別',pay.type),pay.num&&kv('口座番号',pay.num),pay.swift&&kv('SWIFT/BIC・IBAN',pay.swift),pay.holder&&kv('口座名義',pay.holder),pay.paypay&&kv('PayPay',pay.paypay),pay.note&&kv('メモ',pay.note,false)].filter(Boolean).join(''):
+      <div style="margin:12px 0">${hasPay(to)?[pay.country&&kv('国・地域',flag(pay.country)+' '+ccName(pay.country),false),pay.bank&&kv('銀行名',pay.bank),pay.branch&&kv('支店名',pay.branch),pay.type&&kv('口座種別',pay.type),pay.num&&kv('口座番号',pay.num),pay.swift&&kv('SWIFT/BIC / IBAN',pay.swift),pay.holder&&kv('口座名義',pay.holder),pay.paypay&&kv('PayPay',pay.paypay),pay.note&&kv('メモ',pay.note,false)].filter(Boolean).join(''):
         `<p class="sub" style="padding:12px 0">${esc(to.name)}さんの振込先が未登録です。</p><button class="btn outline sm" data-act="m-pay" data-id="${to.id}">${icon('landmark')}振込先を登録する</button>`}</div>
       <div class="grid2" style="margin-bottom:8px">${acct.length?`<button class="btn outline" data-act="cp" data-v="${esc(acct.join(' '))}">${icon('copy')}口座情報をまとめて</button>`:''}${ppUrl?`<a class="btn outline" href="${esc(ppUrl)}" target="_blank" rel="noopener">${icon('external-link')}PayPayを開く</a>`:''}</div>
       <button class="btn ${dn?'outline':''} block" data-act="done" data-i="${i}">${icon(dn?'undo-2':'circle-check')}${dn?'送金済みを取り消す':'送金済みにする'}</button>`);break;}
@@ -1077,7 +1152,7 @@ document.addEventListener('click',async e=>{
   case 'scan-cam':$('#file-cam').click();break;
   case 'scan-pick':$('#file-pick').click();break;
   case 'pay-save':savePayment();break;
-  case 'pay-del':if(confirm('この支払いを削除しますか？')){ev.payments=ev.payments.filter(p=>p.id!==D.id);save();go(`/e/${ev.id}/pay`)}break;
+  case 'pay-del':if(confirm(_('この支払いを削除しますか？'))){ev.payments=ev.payments.filter(p=>p.id!==D.id);save();go(`/e/${ev.id}/pay`)}break;
   }
 });
 function $$last(){const l=document.querySelectorAll('[data-f="iname"]');l[l.length-1]?.focus()}
@@ -1106,6 +1181,8 @@ document.addEventListener('change',e=>{
   if(t.id==='file-cam'||t.id==='file-pick'){const f=t.files[0];t.value='';if(f)scanReceipt(f)}
   if(t.dataset.f==='mw'||t.dataset.f==='mname')render();
   if(t.id==='set-cur')setS('defCur',t.value);
+  if(t.id==='set-ocr')setS('ocr',t.value);
+  if(t.id==='set-lang'){setS('lang',t.value);location.reload()}
   if(t.id==='mp-country'){
     const jp=!t.value||t.value==='JP';
     document.querySelector('.jp-only').hidden=!(!t.value||t.value==='JP');
@@ -1115,7 +1192,8 @@ document.addEventListener('change',e=>{
 });
 
 /* ================= 起動 ================= */
-window.addEventListener('load',()=>{
+window.addEventListener('load',async()=>{
+  await loadLang(); startI18n();
   render(); refreshRates();
   if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').catch(()=>{});
   setInterval(()=>refreshRates(),10*60e3);

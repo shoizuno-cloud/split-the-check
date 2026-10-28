@@ -1,7 +1,7 @@
 /* アプリ本体は「ネット優先・失敗時はキャッシュ」で配信し、更新を取りこぼさない。
    為替APIなどの外部データはキャッシュしない(古いレートを出さないため)。 */
-const CACHE = 'lstc-v5';
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'lang/en.js', 'lang/ko.js', 'lang/zh.js', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
+const CACHE = 'lstc-v6';
+const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'data/banks.js', 'lang/en.js', 'lang/ko.js', 'lang/zh.js', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 const CDN = ['https://unpkg.com/', 'https://cdn.jsdelivr.net/'];
 
 self.addEventListener('install', e => {

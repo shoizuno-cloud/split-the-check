@@ -1,6 +1,31 @@
 /* English */
 window.__L={
 ui:{
+'決済サービス':'Payment service',
+'ID・電話番号・リンク':'ID / phone / link',
+'例: PayPay / Wise / PayPal':'e.g. PayPay / Wise / PayPal',
+'例: taro123 / +81-90-… / https://…':'e.g. taro123 / +81-90-… / https://…',
+'サービス名を入力すると候補が出ます。候補にないサービスも、そのまま入力できます。':'Suggestions appear as you type. Services not on the list can be typed in freely.',
+'決済サービスの候補':'Payment service suggestions',
+'「{0}」をそのまま使う':'Use “{0}” as typed',
+'開く: {0}':'Open: {0}',
+'主な国・地域':'Main countries',
+'その他の国・地域':'Other countries',
+'人ごとに指定':'Per person',
+'計算方法':'Method',
+'割合(%)':'Percent (%)',
+'金額指定':'Fixed amounts',
+'割合':'By percent',
+'対象者':'Participants',
+'チェックした人で、倍率の比に応じて分けます。全員 ×1 なら均等割りです。数字は直接入力できます(例: 1.2)。':'The amount is split among checked people in proportion to their weights. All ×1 means an equal split. You can type any number directly (e.g. 1.2).',
+'割合を直接入力します。合計が100%でなくても、比率として計算します。':'Type each percentage directly. If the total isn’t 100%, it is used as a ratio.',
+'金額を直接入力します。空欄の人で、残りを均等に分けます。':'Type each amount directly. People left blank share the remainder equally.',
+'均等にする':'Make equal',
+'指定の合計 {0} ・ 残り {1}':'Specified {0} ・ Remaining {1}',
+'合計が100%になっていません。比率として計算します。':'The total is not 100%. It is used as a ratio.',
+'金額の合計が合っていません。空欄の人をつくって残りを分けるか、金額を合わせてください。':'The amounts don\'t add up. Leave someone blank to share the remainder, or fix the amounts.',
+'対象者を1人以上選んでください。':'Select at least one person.',
+'残り':'Rest',
 'メンバーに共有':'Share with members',
 '相手のスマホのカメラでQRコードを読み取ると、このイベントを追加できます。':'Scan this QR code with the other person’s phone camera to add this event.',
 'QRコードを作成中…':'Creating QR code…',
@@ -300,7 +325,7 @@ docs:C=>({
 privacy:{title:'Privacy Policy',body:`<p class="meta">Last updated: October 28, 2026</p>
 <p>“Let's split” (the “Service”) is built to collect as little of your information as possible.</p>
 <h3>What the operator does not collect</h3><p>No sign-up is required, and we do not ask for your name or email. We use no analytics, ads or cookies. There is no operator server, so nothing you enter ever reaches the operator.</p>
-<h3>What is saved in your browser</h3><ul><li>Event names, member names, payment details and amounts</li><li>Payout details you register (bank account, PayPay, notes)</li><li>Settings (theme, text size, default currency, etc.)</li><li>An app cache for faster loading</li></ul><p>These stay only in your device's browser and are not encrypted. If you share your device with others, please avoid registering payout details. You can erase everything at any time with “Delete all data” in Settings.</p>
+<h3>What is saved in your browser</h3><ul><li>Event names, member names, payment details and amounts</li><li>Payout details you register (bank accounts, payment service IDs, notes)</li><li>Settings (theme, text size, default currency, etc.)</li><li>An app cache for faster loading</li></ul><p>These stay only in your device's browser and are not encrypted. If you share your device with others, please avoid registering payout details. You can erase everything at any time with “Delete all data” in Settings.</p>
 <h3>External communication</h3><ul><li><b>Exchange rates</b>: to convert foreign currencies, the app asks ExchangeRate-API (open.er-api.com) or Frankfurter for currency rates. Only ordinary connection information (such as your IP address) is sent — never amounts or member names.</li><li><b>Libraries</b>: icons (Lucide), receipt scanning (Tesseract.js) and QR code creation/scanning (qrcode-generator, jsQR) are loaded from unpkg and jsDelivr. Language data for receipt scanning is downloaded from Tesseract's servers the first time you use scanning.</li><li><b>Hosting</b>: the Service is hosted on GitHub Pages, and GitHub may keep access logs.</li></ul>
 <h3>Receipt photos</h3><p>Reading text from a photo happens entirely on your device. Photos are neither sent nor stored.</p>
 <h3>QR codes</h3><p>Scanning a QR code uses your device's camera. The video is processed on your device only and is never sent or stored. A QR code contains the same content as a share link.</p>

@@ -1,6 +1,47 @@
 /* English */
 window.__L={
 ui:{
+'メンバーに共有':'Share with members',
+'相手のスマホのカメラでQRコードを読み取ると、このイベントを追加できます。':'Scan this QR code with the other person’s phone camera to add this event.',
+'QRコードを作成中…':'Creating QR code…',
+'QRコード':'QR code',
+'データが大きすぎてQRコードにできません。リンクで送ってください。':'The data is too large for a QR code. Please send the link instead.',
+'オンにすると銀行口座などがQRコードとリンクに入ります。見せる・送る相手に気をつけてください。':'When on, bank details are included in the QR code and link. Be careful who you show or send it to.',
+'リンクをコピー':'Copy link',
+'共有…':'Share…',
+'共有した時点の内容です。支払いを追加・変更したら、もう一度共有してください。':'This is a snapshot from when you shared. If you add or change payments, share again.',
+'QRコードを読み取る':'Scan QR code',
+'QRコードで追加':'Add via QR code',
+'カメラをQRコードに向けてください。':'Point the camera at the QR code.',
+'カメラを起動できませんでした。ブラウザのカメラ許可を確認するか、画像から読み取ってください。':'Couldn\'t start the camera. Check the browser\'s camera permission, or read from an image.',
+'画像から読み取る':'Read from image',
+'Let\'s splitのQRコードではありません。':'This isn\'t a Let\'s split QR code.',
+'QRコードが見つかりませんでした。':'No QR code found.',
+'「{0}」は、すでにこの端末にあります。最新の内容で上書きしますか？':'“{0}” is already on this device. Overwrite it with the latest content?',
+'上書き更新':'Update (overwrite)',
+'別のイベントとして追加':'Add as a separate event',
+'あなたはどのメンバーですか？':'Which member are you?',
+'あとから変更できます。選ぶと、精算画面にあなたの分が表示されます。':'You can change this later. Choosing one shows your share on the settle screen.',
+'更新しました':'Updated',
+'追加しました':'Added',
+'このイベント':'This event',
+'あなた(このイベントでの自分)':'You (in this event)',
+'選ぶと、精算画面に「あなたの精算」が出ます':'When chosen, “Your settlement” appears on the settle screen.',
+'選ばない':'Not set',
+'あなた':'You',
+'あなたの精算':'Your settlement',
+'{0}さんに払う':'Pay {0}',
+'{0}さんから受け取る':'Receive from {0}',
+'メンバーの振込先':'Members\' payout details',
+'未登録':'Not set',
+'口座{0}':'Account {0}',
+'口座を追加':'Add account',
+'口座':'Account',
+'名称(任意)':'Label (optional)',
+'例: メイン、海外用':'e.g. Main, Overseas',
+'この口座を削除':'Delete this account',
+'振込先を編集':'Edit payout details',
+'{0}さんの振込先を見る':'View {0}\'s payout details',
 '(削除済み)':'(deleted)',
 '為替レートを取得できませんでした。通信状況を確認してください':"Couldn't get exchange rates. Check your connection.",
 '未取得':'Not fetched',
@@ -256,12 +297,13 @@ howto:`
     <li><b>Split by receipt</b>: choose “By item”, scan the receipt and tap who ordered each item.</li>
     <li><b>Settle up</b>: see who pays whom, tap a row to copy payout details, and mark it as sent once paid.</li>`,
 docs:C=>({
-privacy:{title:'Privacy Policy',body:`<p class="meta">Last updated: October 27, 2026</p>
+privacy:{title:'Privacy Policy',body:`<p class="meta">Last updated: October 28, 2026</p>
 <p>“Let's split” (the “Service”) is built to collect as little of your information as possible.</p>
 <h3>What the operator does not collect</h3><p>No sign-up is required, and we do not ask for your name or email. We use no analytics, ads or cookies. There is no operator server, so nothing you enter ever reaches the operator.</p>
 <h3>What is saved in your browser</h3><ul><li>Event names, member names, payment details and amounts</li><li>Payout details you register (bank account, PayPay, notes)</li><li>Settings (theme, text size, default currency, etc.)</li><li>An app cache for faster loading</li></ul><p>These stay only in your device's browser and are not encrypted. If you share your device with others, please avoid registering payout details. You can erase everything at any time with “Delete all data” in Settings.</p>
-<h3>External communication</h3><ul><li><b>Exchange rates</b>: to convert foreign currencies, the app asks ExchangeRate-API (open.er-api.com) or Frankfurter for currency rates. Only ordinary connection information (such as your IP address) is sent — never amounts or member names.</li><li><b>Libraries</b>: icons (Lucide) and receipt scanning (Tesseract.js) are loaded from unpkg and jsDelivr. Language data for receipt scanning is downloaded from Tesseract's servers the first time you use scanning.</li><li><b>Hosting</b>: the Service is hosted on GitHub Pages, and GitHub may keep access logs.</li></ul>
+<h3>External communication</h3><ul><li><b>Exchange rates</b>: to convert foreign currencies, the app asks ExchangeRate-API (open.er-api.com) or Frankfurter for currency rates. Only ordinary connection information (such as your IP address) is sent — never amounts or member names.</li><li><b>Libraries</b>: icons (Lucide), receipt scanning (Tesseract.js) and QR code creation/scanning (qrcode-generator, jsQR) are loaded from unpkg and jsDelivr. Language data for receipt scanning is downloaded from Tesseract's servers the first time you use scanning.</li><li><b>Hosting</b>: the Service is hosted on GitHub Pages, and GitHub may keep access logs.</li></ul>
 <h3>Receipt photos</h3><p>Reading text from a photo happens entirely on your device. Photos are neither sent nor stored.</p>
+<h3>QR codes</h3><p>Scanning a QR code uses your device's camera. The video is processed on your device only and is never sent or stored. A QR code contains the same content as a share link.</p>
 <h3>Share links</h3><p>A share link contains the event's contents inside the link itself (the part after “#”, which is not sent to the hosting server when the link is opened). Anyone who has the link can see the contents, so be careful who you send it to. You choose whether payout details are included when you create the link; they are not included by default. If you send it via chat apps such as LINE, that service will also receive the contents.</p>
 <h3>Contact</h3><p>Please send feedback and questions to <a href="mailto:${C.CONTACT}?subject=${C.SUBJECT}">${C.CONTACT}</a>. Bug reports are also welcome on <a href="${C.ISSUES}" target="_blank" rel="noopener">GitHub Issues</a> (a public place, so please do not include personal information). Email addresses you send us are used only to reply to you.</p>
 <h3>Changes</h3><p>We may update this policy as needed. Changes will be posted on this page.</p>`},

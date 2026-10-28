@@ -222,6 +222,14 @@ textarea.input{min-height:96px;resize:vertical;font-size:14px}
 .combo-list li{display:flex;justify-content:space-between;gap:8px;align-items:center;min-height:48px;padding:6px 14px;cursor:pointer}
 .combo-list li small{color:var(--on2);font-size:13px;white-space:nowrap}
 .combo-list li:hover{background:var(--pc)}
+.acct-row{display:flex;align-items:center;gap:8px;width:100%;min-height:48px;padding:6px 8px;margin-top:6px;border:1px solid var(--outline-v);border-radius:var(--r-m);background:var(--bg);cursor:pointer;text-align:left;font-weight:500;position:relative}
+.acct-row .grow{flex:1;min-width:0;overflow-wrap:anywhere}
+.acct-row small{display:block;color:var(--on2);font-size:13px;font-weight:400}
+.qr-box{background:#fff;border-radius:var(--r-m);padding:8px;max-width:300px;margin:0 auto 12px;min-height:120px;display:grid;place-items:center;color:#4D4D4D}
+.qr-box svg{display:block;width:100%;height:auto}
+.scan-view{background:#000;border-radius:var(--r-m);overflow:hidden;aspect-ratio:1;margin-bottom:8px;max-width:360px;margin-left:auto;margin-right:auto}
+.scan-view video{width:100%;height:100%;object-fit:cover;display:block}
+.topbar .actions{position:relative;z-index:1}
 .rate-chip{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--on2);flex-wrap:wrap}
 .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 </style>
@@ -230,6 +238,7 @@ textarea.input{min-height:96px;resize:vertical;font-size:14px}
 <div class="shell" id="app"></div>
 <input type="file" id="file-cam" accept="image/*" capture="environment" hidden>
 <input type="file" id="file-pick" accept="image/*" hidden>
+<input type="file" id="file-qr" accept="image/*" hidden>
 
 <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 <script>
@@ -268,7 +277,7 @@ function loadLang(){
   document.documentElement.lang=LANG; setIntl();
   if(LANG==='ja')return Promise.resolve();
   return new Promise(res=>{
-    const sc=document.createElement('script'); sc.src=`lang/${LANG}.js`;
+    const sc=document.createElement('script'); sc.src=`lang/${LANG}.js?v=${encodeURIComponent(APP_VERSION)}`;
     sc.onload=()=>{
       L=window.__L||{};
       PATS=Object.keys(L.ui||{}).filter(k=>/\{\d\}/.test(k)).map(k=>{
@@ -325,13 +334,23 @@ function applyS(){const r=document.documentElement;S.theme==='system'?r.removeAt
 const setS=(k,v)=>{S[k]=v;store.set('wakekko.settings',S);applyS()};
 applyS();
 const CONTACT='dev-jp@outlook.jp';
-const APP_VERSION='1.2 (2026-10-28)', ISSUES='https://github.com/shoizuno-cloud/split-the-check/issues';
+const APP_VERSION='1.3 (2026-10-28)', ISSUES='https://github.com/shoizuno-cloud/split-the-check/issues';
 /* 外から入ってくるデータ(バックアップ・共有リンク)は、形を確かめてから使う */
+function normEvent(e){
+  if(e&&Array.isArray(e.members))e.members.forEach(m=>{
+    if(m.pay&&!m.accts)m.accts=[m.pay];
+    delete m.pay;
+    if(Array.isArray(m.accts)&&!m.accts.length)delete m.accts;
+  });
+  return e;
+}
+db.events.forEach(normEvent);
+const QR_SRC='https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js', JSQR_SRC='https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js', MAX_ACCTS=5;
 function validEvent(e){
   try{
     if(!e||typeof e.name!=='string'||typeof e.cur!=='string'||!Array.isArray(e.members)||!Array.isArray(e.payments))return false;
     digits(e.cur);
-    if(!e.members.every(m=>m&&typeof m.id==='string'&&typeof m.name==='string'&&Number.isFinite(+m.w)))return false;
+    if(!e.members.every(m=>m&&typeof m.id==='string'&&typeof m.name==='string'&&Number.isFinite(+m.w)&&(m.accts===undefined||(Array.isArray(m.accts)&&m.accts.length<=MAX_ACCTS&&m.accts.every(a=>a&&typeof a==='object')))))return false;
     return e.payments.every(p=>p&&typeof p.id==='string'&&Number.isFinite(p.amount)&&Number.isFinite(p.rate)&&typeof p.cur==='string'&&['weight','items'].includes(p.mode)&&Array.isArray(p.parts)&&Array.isArray(p.items)&&p.parts.every(x=>x&&Number.isFinite(+x.w))&&p.items.every(i=>i&&Number.isFinite(i.price)&&Array.isArray(i.who))&&(digits(p.cur),true));
   }catch{return false}
 }
@@ -422,7 +441,7 @@ function transfers(b){
 let R={v:'home'}, lastKey='';
 function parseRoute(){
   const h=location.hash.slice(1)||'/';
-  if(h.startsWith('s='))return {v:'import',data:h.slice(2)};
+  if(/^(s|z)=/.test(h))return {v:'import',data:h};
   if(h==='/privacy'||h==='/terms')return {v:'doc',k:h.slice(1)};
   let m;
   if(m=h.match(/^\/e\/([^/]+)\/p\/([^/]+)$/))return {v:'edit',id:m[1],pid:m[2]};
@@ -471,10 +490,10 @@ function viewHome(){
     const tot=ev.payments.reduce((a,p)=>a+calc(ev,p).totalMinor,0);
     return `<a class="row-link" href="#/e/${ev.id}/pay"><span class="av" style="--h:215">${icon('users','')}</span><span class="grow"><span class="t">${esc(ev.name)}</span><br><span class="sub">${ev.members.length}人 ・ ${ev.payments.length}件 ・ ${ev.cur}</span></span><span class="amount">${fmtMinor(tot,ev.cur)}</span>${icon('chevron-right')}</a>`;
   }).join('');
-  return `<div class="large-title" style="padding-top:max(24px,env(safe-area-inset-top));display:flex;gap:8px;align-items:flex-start"><div style="flex:1;min-width:0"><h2>Let's split</h2><p>傾斜も為替もレシートも。割り勘をスムーズに。</p></div><button class="icon-btn" data-act="settings" aria-label="設定" style="margin:-4px -8px 0 0">${icon('settings')}</button></div>
+  return `<div class="large-title" style="padding-top:max(24px,env(safe-area-inset-top));display:flex;gap:8px;align-items:flex-start"><div style="flex:1;min-width:0"><h2>Let's split</h2><p>傾斜も為替もレシートも。割り勘をスムーズに。</p></div><div style="display:flex;margin:-4px -8px 0 0"><button class="icon-btn" data-act="qr-scan" aria-label="QRコードで追加">${icon('scan-qr-code')}</button><button class="icon-btn" data-act="settings" aria-label="設定">${icon('settings')}</button></div></div>
   <main class="view">${installCard()}${db.events.length?`<h3 class="h3">イベント</h3><div class="list">${cards}</div>`:
     `<div class="empty">${icon('hand-coins')}<h3>まずはイベントを作りましょう</h3><p>旅行・飲み会・ランチなど、割り勘したい集まりごとに作ります。</p>
-     <ol class="steps"><li>メンバーを登録する</li><li>立て替えた支払いを記録する</li><li>「精算」で誰が誰にいくら払うか確認する</li></ol></div>`}
+     <ol class="steps"><li>メンバーを登録する</li><li>立て替えた支払いを記録する</li><li>「精算」で誰が誰にいくら払うか確認する</li></ol><button class="btn tonal" data-act="qr-scan" style="margin-top:16px">${icon('scan-qr-code')}QRコードで追加</button></div>`}
   </main>
   <button class="btn fab home" data-act="ev-new">${icon('plus')}イベントを作る</button>`;
 }
@@ -516,12 +535,13 @@ const memberInput=()=>`<input class="input ne-m" placeholder="名前" maxlength=
 
 /* ---- 規約・ポリシー ---- */
 const DOCS_JA={
-privacy:{title:'プライバシーポリシー',body:`<p class="meta">最終更新: 2026年10月27日</p>
+privacy:{title:'プライバシーポリシー',body:`<p class="meta">最終更新: 2026年10月28日</p>
 <p>「Let's split」(以下「本サービス」)は、利用者の情報をできるだけ集めない作りにしています。</p>
 <h3>運営者が集めない情報</h3><p>氏名・メールアドレスなどの登録は不要です。アクセス解析、広告、Cookieも使いません。運営者のサーバーはなく、入力した内容が運営者に届くことはありません。</p>
 <h3>端末のブラウザに保存されるもの</h3><ul><li>イベント名、メンバーの名前、支払いの内容と金額</li><li>登録した振込先(銀行口座、PayPay、メモ)</li><li>設定(テーマ、文字サイズ、既定の通貨など)</li><li>アプリ本体の高速表示のためのキャッシュ</li></ul><p>これらは、お使いの端末のブラウザ内にだけ保存され、暗号化はされません。端末を他の人と共有している場合は、振込先の登録をお控えください。「設定」の「すべてのデータを削除」でいつでも消せます。</p>
-<h3>外部への通信</h3><ul><li><b>為替レート</b>: 外貨の換算のため、ExchangeRate-API(open.er-api.com)または Frankfurter に、通貨レートを問い合わせます。送るのは通常の通信情報(IPアドレスなど)のみで、金額やメンバー名は送りません。</li><li><b>部品の読み込み</b>: アイコン(Lucide)とレシート読み取り(Tesseract.js)を、unpkg・jsDelivr から読み込みます。レシートの日本語データは、読み取りを初めて使うときに Tesseract のサーバーから読み込まれます。</li><li><b>配信</b>: 本サービスは GitHub Pages で配信しており、GitHub がアクセスログを記録する場合があります。</li></ul>
+<h3>外部への通信</h3><ul><li><b>為替レート</b>: 外貨の換算のため、ExchangeRate-API(open.er-api.com)または Frankfurter に、通貨レートを問い合わせます。送るのは通常の通信情報(IPアドレスなど)のみで、金額やメンバー名は送りません。</li><li><b>部品の読み込み</b>: アイコン(Lucide)、レシート読み取り(Tesseract.js)、QRコードの作成・読み取り(qrcode-generator、jsQR)を、unpkg・jsDelivr から読み込みます。レシートの日本語データは、読み取りを初めて使うときに Tesseract のサーバーから読み込まれます。</li><li><b>配信</b>: 本サービスは GitHub Pages で配信しており、GitHub がアクセスログを記録する場合があります。</li></ul>
 <h3>レシートの写真</h3><p>写真の文字の読み取りは、すべてお使いの端末の中で行います。写真は送信も保存もしません。</p>
+<h3>QRコード</h3><p>QRコードの読み取りには、端末のカメラを使います。映像は端末の中だけで処理し、送信も保存もしません。QRコードの中身は、共有リンクと同じです。</p>
 <h3>共有リンク</h3><p>共有リンクには、イベントの内容がリンクの中に含まれます(「#」以降の部分で、リンクを開いても配信サーバーには送られません)。リンクを知っている人は内容を見られるため、送る相手に気をつけてください。振込先は、リンクを作るときに含めるかを選べ、初期設定では含めません。LINEなどで送ると、そのサービスにも内容が渡ります。</p>
 <h3>お問い合わせ</h3><p>ご意見やご質問は、<a href="mailto:${CONTACT}?subject=${SUBJECT()}">${CONTACT}</a> までお送りください。不具合のご報告は <a href="${ISSUES}" target="_blank" rel="noopener">GitHub の Issues</a> でも受け付けています(公開の場なので、個人情報は書かないでください)。お問い合わせでいただいたメールアドレスなどは、返信のためだけに使います。</p>
 <h3>変更</h3><p>必要に応じてこのポリシーを変更します。変更後はこのページに掲載します。</p>`},
@@ -545,7 +565,13 @@ const HOWTO_JA=`
 function openSettings(){
   const sw=(act,on,label,desc)=>`<div class="set-row"><span class="lbl">${label}<small>${desc}</small></span><button class="switch" role="switch" aria-checked="${on}" aria-label="${label}" data-act="${act}"><span></span></button></div>`;
   const nPay=db.events.reduce((a,e)=>a+e.members.filter(hasPay).length,0);
+  const cev=R.v==='event'?getEv(R.id):null;
+  const evSec=cev?`<h3 class="set-h" style="margin-top:8px">このイベント</h3>
+  <div class="field" style="margin:8px 0 12px"><label for="es-name">イベント名</label><input class="input" id="es-name" value="${esc(cev.name)}" maxlength="40"></div>
+  <div class="set-row"><span class="lbl">あなた(このイベントでの自分)<small>選ぶと、精算画面に「あなたの精算」が出ます</small></span><select class="input" id="es-me" style="width:150px" aria-label="あなた"><option value="">選ばない</option>${cev.members.map(m=>`<option value="${m.id}" ${cev.me===m.id?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div>
+  <div class="row2" style="margin:12px 0 4px"><button class="btn sm" data-act="es-save">保存</button><button class="btn danger sm" data-act="es-del">${icon('trash-2')}このイベントを削除</button></div>`:'';
   sheet(`<div class="row2" style="justify-content:space-between;margin-bottom:4px"><h2 style="margin:0">設定</h2><button class="btn text sm" data-act="sheet-close">閉じる</button></div>
+  ${evSec}
   <h3 class="set-h">表示</h3>
   <div class="set-row"><span class="lbl">言語<small>表示する言語です。「自動」は端末の言語に合わせます</small></span><select class="input" id="set-lang" style="width:150px" aria-label="言語"><option value="auto" ${S.lang==='auto'?'selected':''}>自動</option>${LANGS.map(([c,n])=>`<option value="${c}" ${S.lang===c?'selected':''}>${n}</option>`).join('')}</select></div>
   <div class="set-row"><span class="lbl">テーマ<small>「端末に合わせる」は、スマホのダークモード設定に従います</small></span></div>
@@ -578,7 +604,7 @@ function viewEvent(ev,tab){
   const body={pay:tabPay,settle:tabSettle,members:tabMembers}[tab](ev);
   const tabs=[['pay','wallet','支払い'],['settle','arrow-right-left','精算'],['members','users','メンバー']]
     .map(([k,i,l])=>`<a href="#/e/${ev.id}/${k}" ${k===tab?'aria-current="page"':''}><span class="pill">${icon(i)}</span>${l}</a>`).join('');
-  return `${header('',{back:'#/'}).replace('<h1></h1>','<h1>'+esc(ev.name)+'</h1>').replace(/<div class="actions">.*<\/div>/,`<div class="actions"><button class="icon-btn" data-act="ev-settings" aria-label="イベント設定">${icon('settings')}</button></div>`)}
+  return `${header('',{back:'#/'}).replace('<h1></h1>',()=>'<h1>'+esc(ev.name)+'</h1>').replace(/<div class="actions">.*<\/div>/,`<div class="actions"><button class="icon-btn" data-act="share-link" aria-label="メンバーに共有">${icon('qr-code')}</button><button class="icon-btn" data-act="settings" aria-label="設定">${icon('settings')}</button></div>`)}
   <div class="large-title"><h2>${esc({pay:'支払い',settle:'精算',members:'メンバー'}[tab])}</h2></div>
   <main class="view">${body}</main>
   ${tab==='pay'&&ev.members.length>=2?`<a class="btn fab" href="#/e/${ev.id}/p/new">${icon('plus')}支払いを追加</a>`:''}
@@ -599,14 +625,15 @@ function tabMembers(ev){
   const rows=ev.members.map(m=>`<div class="card" style="padding:12px"><div class="row2" style="margin-bottom:8px">${av(ev,m.id)}<input class="input" data-f="mname" data-id="${m.id}" value="${esc(m.name)}" aria-label="名前" maxlength="20">
     <button class="icon-btn" data-act="m-del" data-id="${m.id}" aria-label="${esc(m.name)}を削除" ${used(m.id)||ev.members.length<=2?'disabled style="opacity:.35"':''}>${icon('trash-2')}</button></div>
     <div class="row2" style="justify-content:space-between"><span class="sub" id="wl-${m.id}">標準の傾斜(支払いごとに変更可)</span>${stepper(m.w,'mw',m.id)}</div>
+    ${(m.accts||[]).map((a,j)=>`<button class="acct-row" data-act="m-view" data-id="${m.id}" data-ai="${j}">${icon('landmark')}<span class="grow">${a.label?esc(a.label)+' ・ ':''}${esc(acctLine(a))}</span>${icon('chevron-right')}</button>`).join('')}
     <button class="btn ${hasPay(m)?'tonal':'outline'} sm block" data-act="m-pay" data-id="${m.id}" style="margin-top:8px">${icon('landmark')}${hasPay(m)?'振込先を編集(登録済み)':'振込先を登録'}</button></div>`).join('');
   return `<p class="sub" style="margin-bottom:12px">傾斜は「負担の重さ」の倍率です。例: 先輩 ×1.5、後輩 ×0.5。支払いごとにも変更できます。</p>${rows}
   <button class="btn tonal block" data-act="m-add">${icon('user-plus')}メンバーを追加</button>`;
 }
 const PAYF=[['bank','銀行名','例: ○○銀行'],['branch','支店名','例: 渋谷支店'],['type','口座種別','普通 / 当座'],['num','口座番号','例: 1234567'],['swift','SWIFT/BIC / IBAN','海外の口座のとき'],['holder','口座名義(カナ)','例: タナカ タロウ'],['paypay','PayPay ID またはリンク','例: taro123 / https://pay.paypay.ne.jp/…'],['note','メモ','例: 現金でOK']];
 /* 国・地域と、よく使われる銀行・送金サービスの候補。読み(ひらがな・ローマ字)でも探せる */
-const COUNTRIES=[['JP','日本'],['US','アメリカ'],['GB','イギリス'],['EU','ユーロ圏'],['KR','韓国'],['CN','中国'],['TW','台湾'],['HK','香港'],['SG','シンガポール'],['TH','タイ'],['VN','ベトナム'],['PH','フィリピン'],['MY','マレーシア'],['ID','インドネシア'],['IN','インド'],['AU','オーストラリア'],['CA','カナダ']];
-const CUR_CC={JPY:'JP',USD:'US',GBP:'GB',EUR:'EU',KRW:'KR',CNY:'CN',TWD:'TW',HKD:'HK',SGD:'SG',THB:'TH',VND:'VN',PHP:'PH',MYR:'MY',IDR:'ID',INR:'IN',AUD:'AU',CAD:'CA'};
+const COUNTRIES=[['JP','日本'],['US','アメリカ'],['GB','イギリス'],['EU','ユーロ圏'],['KR','韓国'],['CN','中国'],['TW','台湾'],['HK','香港'],['SG','シンガポール'],['TH','タイ'],['VN','ベトナム'],['PH','フィリピン'],['MY','マレーシア'],['ID','インドネシア'],['IN','インド'],['AU','オーストラリア'],['CA','カナダ'],['NZ','ニュージーランド'],['CH','スイス'],['BR','ブラジル'],['MX','メキシコ'],['AE','アラブ首長国連邦'],['ZA','南アフリカ']];
+const CUR_CC={JPY:'JP',USD:'US',GBP:'GB',EUR:'EU',KRW:'KR',CNY:'CN',TWD:'TW',HKD:'HK',SGD:'SG',THB:'TH',VND:'VN',PHP:'PH',MYR:'MY',IDR:'ID',INR:'IN',AUD:'AU',CAD:'CA',NZD:'NZ',CHF:'CH',BRL:'BR',MXN:'MX',AED:'AE',ZAR:'ZA'};
 const flag=cc=>cc==='EU'?'🇪🇺':String.fromCodePoint(...[...cc].map(c=>127397+c.charCodeAt(0)));
 const ccName=cc=>LANG==='ja'?(COUNTRIES.find(x=>x[0]===cc)?.[1]||cc):(regionNames?.of(cc)||cc);
 const BANK_DATA=`JP|みずほ銀行|みずほ mizuho
@@ -800,6 +827,150 @@ CA|TD Canada Trust|てぃーでぃー
 CA|Scotiabank|すこしあ
 CA|BMO|びーえむおー
 CA|CIBC|しーあいびーしー
+JP|北國銀行|ほっこく hokkoku
+JP|山梨中央銀行|やまなし ちゅうおう yamanashi
+JP|栃木銀行|とちぎ tochigi
+JP|筑波銀行|つくば tsukuba
+JP|東和銀行|とうわ towa
+JP|千葉興業銀行|ちば こうぎょう
+JP|東京スター銀行|とうきょう すたー tokyo star
+JP|みちのく銀行|みちのく michinoku
+JP|北日本銀行|きたにほん
+JP|荘内銀行|しょうない shonai
+JP|阿波銀行|あわ awa
+JP|百十四銀行|ひゃくじゅうし 114
+JP|四国銀行|しこく shikoku
+JP|愛媛銀行|えひめ ehime
+JP|佐賀銀行|さが saga
+JP|熊本銀行|くまもと kumamoto
+JP|福井銀行|ふくい fukui
+JP|富山銀行|とやま toyama
+JP|長野銀行|ながの nagano
+JP|スルガ銀行|するが suruga
+JP|三重銀行|みえ mie
+JP|三菱UFJ信託銀行|みつびし しんたく
+JP|みんなの銀行|みんな minna
+JP|UI銀行|ゆーあい ui
+JP|ゆうちょ銀行(ネット)|ゆうちょ ぱるる
+US|Discover Bank|でぃすかばー
+US|Fifth Third Bank|ふぃふすさーど
+US|Regions Bank|りーじょんず
+US|KeyBank|きーばんく
+US|Citizens Bank|しちずんず
+US|M&T Bank|えむあんどてぃー
+US|Huntington Bank|はんてぃんとん
+US|Cash App|きゃっしゅあっぷ
+GB|Chase UK|ちぇいす
+GB|First Direct|ふぁーすと
+GB|Metro Bank|めとろ
+GB|Virgin Money|ゔぁーじん
+GB|Co-operative Bank|こーおぺ
+KR|SC第一銀行(SC제일은행)|えすしー
+KR|釜山銀行(부산은행)|ぷさん busan
+KR|大邱銀行(iM뱅크)|てぐ daegu
+KR|郵便局(우체국)|ゆうびん post
+KR|シティ銀行(씨티은행)|してぃ citi
+CN|中国郵政儲蓄銀行|ゆうせい psbc
+CN|浦発銀行|ほはつ spdb
+CN|興業銀行|こうぎょう cib
+CN|民生銀行|みんせい cmbc
+CN|平安銀行|へいあん ping an
+TW|第一銀行|だいいち first
+TW|華南銀行|かなん hua nan
+TW|合作金庫銀行|ごうさく tcb
+TW|彰化銀行|しょうか chb
+TW|中華郵政|ちゅうか post
+TW|街口支付|がいこう jkopay
+HK|Citibank 香港|してぃ
+HK|大新銀行|だいしん dah sing
+HK|PayMe|ぺいみー
+HK|FPS(轉數快)|えふぴーえす
+SG|Maybank Singapore|めいばんく
+SG|Citibank Singapore|してぃ
+TH|Government Savings Bank (GSB)|おうしん gsb
+TH|CIMB Thai|しむびー
+TH|TrueMoney|とぅるーまにー
+VN|Agribank|あぐりばんく
+VN|Sacombank|さこむばんく
+VN|TPBank|てぃーぴーばんく
+VN|MoMo|もも
+VN|ZaloPay|ざろぺい
+PH|UnionBank|ゆにおんばんく
+PH|PNB|ぴーえぬびー
+PH|RCBC|あーるしーびーしー
+PH|China Bank|ちゃいなばんく
+PH|EastWest Bank|いーすとうぇすと
+MY|Affin Bank|あふぃん
+MY|Bank Islam|ばんくいすらむ
+MY|AmBank|あむばんく
+MY|Boost|ぶーすと
+MY|GrabPay|ぐらぶぺい
+ID|BTN|びーてぃーえぬ
+ID|Bank Permata|ぱーまた
+ID|Bank Danamon|だなもん
+ID|BSI (Bank Syariah Indonesia)|びーえすあい
+ID|DANA|だな
+ID|ShopeePay|しょぴーぺい
+IN|Bank of Baroda|ばろだ
+IN|Canara Bank|かなら
+IN|IndusInd Bank|いんだすいんど
+IN|Yes Bank|いえす
+IN|Paytm|ぺいてぃーえむ
+IN|PhonePe|ふぉんぺ
+IN|Google Pay|ぐーぐるぺい gpay
+AU|Bendigo Bank|べんでぃご
+AU|Bank of Queensland (BOQ)|くいーんずらんど boq
+AU|Suncorp|さんこーぷ
+AU|St.George Bank|せんとじょーじ
+AU|PayID|ぺいあいでぃー
+CA|National Bank of Canada|ないしょなる
+CA|Desjardins|でじゃるでぃん
+CA|Tangerine|たんじぇりん
+CA|Interac e-Transfer|いんたーらっく
+EU|Rabobank|らぼばんく
+EU|ABN AMRO|えーびーえぬあむろ
+EU|KBC|けーびーしー
+EU|CaixaBank|かいしゃばんく
+EU|Banco Sabadell|さばでる
+EU|bunq|ばんく
+EU|Nordea|のるでぃあ
+EU|Danske Bank|だんすけ
+EU|Erste Bank|えるすて
+EU|SEPA 振込|せぱ sepa
+NZ|ANZ New Zealand|えーえぬぜっと
+NZ|ASB Bank|えーえすびー
+NZ|BNZ|びーえぬぜっと
+NZ|Westpac New Zealand|うぇすとぱっく
+NZ|Kiwibank|きうぃばんく
+CH|UBS|ゆーびーえす
+CH|Raiffeisen Switzerland|らいふぁいぜん
+CH|PostFinance|ぽすとふぃなんす
+CH|Zürcher Kantonalbank (ZKB)|ちゅーりひ zkb
+CH|TWINT|ついんと
+BR|Itaú|いたう itau
+BR|Bradesco|ぶらですこ
+BR|Banco do Brasil|ぶらじる
+BR|Caixa Econômica Federal|かいしゃ caixa
+BR|Santander Brasil|さんたんでーる
+BR|Nubank|ぬばんく
+BR|Banco Inter|いんたー
+BR|PIX|ぴっくす
+MX|BBVA México|びーびーぶいえー
+MX|Banorte|ばのるて
+MX|Santander México|さんたんでーる
+MX|Citibanamex|しちばなめっくす
+MX|HSBC México|えいちえすびーしー
+MX|SPEI|すぺい
+AE|Emirates NBD|えみれーつ
+AE|Abu Dhabi Commercial Bank (ADCB)|あぶだび adcb
+AE|First Abu Dhabi Bank (FAB)|ふぁーすと fab
+AE|Mashreq Bank|ますれく
+AE|Dubai Islamic Bank|だばい
+ZA|Standard Bank|すたんだーど
+ZA|FNB (First National Bank)|えふえぬびー
+ZA|Absa|あぶさ
+ZA|Nedbank|ねっどばんく
+ZA|Capitec|きゃぴてっく
 *|Wise|わいず transferwise
 *|Revolut|れぼりゅーと revolut
 *|PayPal|ぺいぱる`;
@@ -812,7 +983,8 @@ function bankMatches(cc,q){
   if(toks.length)hit.sort((a,b)=>(b.h.startsWith(toks[0])-a.h.startsWith(toks[0])));
   return hit.slice(0,8).map(x=>x.b);
 }
-const hasPay=m=>m.pay&&PAYF.some(([k])=>m.pay[k]);
+const hasPay=m=>(m.accts||[]).some(a=>PAYF.some(([k])=>a[k]));
+const acctLine=a=>[a.bank,a.num?'••'+String(a.num).slice(-4):''].filter(Boolean).join(' ')||a.paypay||a.note||'';
 const stepper=(v,f,id,i='')=>`<span class="stepper"><button class="icon-btn" data-act="wstep" data-f="${f}" data-id="${id}" data-i="${i}" data-d="-0.5" aria-label="倍率を下げる">${icon('minus')}</button><input type="number" inputmode="decimal" step="0.1" min="0" data-f="${f}" data-id="${id}" data-i="${i}" value="${v}" aria-label="倍率"><button class="icon-btn" data-act="wstep" data-f="${f}" data-id="${id}" data-i="${i}" data-d="0.5" aria-label="倍率を上げる">${icon('plus')}</button></span>`;
 
 function tabSettle(ev){
@@ -821,11 +993,16 @@ function tabSettle(ev){
   const foreign=ev.payments.filter(p=>p.cur!==ev.cur);
   const xs=tr.length?tr.map((t,i)=>{const dn=ev.done?.[t.from+'>'+t.to]===t.v;return `<button class="xfer" data-act="xfer" data-i="${i}" data-done="${dn}" aria-label="${esc(mname(ev,t.from))}から${esc(mname(ev,t.to))}へ ${fmtMinor(t.v,ev.cur)}の振込先を開く">${av(ev,t.from,'sm')}<span class="nm">${esc(mname(ev,t.from))}</span>${icon('arrow-right')}${av(ev,t.to,'sm')}<span class="nm">${esc(mname(ev,t.to))}</span>${dn?`<span class="tag" style="background:var(--okc);color:var(--ok)">${icon('check')}送金済</span>`:''}<span class="amount">${fmtMinor(t.v,ev.cur)}</span><span class="go">${icon('chevron-right')}</span></button>`}).join(''):`<p style="display:flex;gap:8px;align-items:center;color:var(--ok);font-weight:700">${icon('circle-check')}精算は不要です</p>`;
   const rows=ev.members.map(m=>{const x=b[m.id],n=x.paid-x.owed;return `<tr><td>${esc(m.name)}</td><td>${fmtMinor(x.paid,ev.cur)}</td><td>${fmtMinor(x.owed,ev.cur)}</td><td class="${n>0?'pos':n<0?'neg':''}">${n>0?'+':n<0?'−':''}${fmtMinor(Math.abs(n),ev.cur)}</td></tr>`}).join('');
-  return `<div class="card"><h3>精算方法</h3><p class="sub">振込の回数が最小になる組み合わせです。行をタップすると振込先を確認できます。</p>${xs}</div>
+  const me=ev.me&&mem(ev,ev.me)?ev.me:null;
+  const mine=me?tr.map((t,idx)=>({t,idx})).filter(x=>x.t.from===me||x.t.to===me):[];
+  const meCard=me?`<div class="card" style="background:var(--pc);color:var(--on-pc);border-color:transparent"><h3>あなたの精算</h3>${mine.length?mine.map(({t,idx})=>{const pay=t.from===me;return `<button class="xfer" data-act="xfer" data-i="${idx}" style="color:inherit"><span class="nm">${pay?`${esc(mname(ev,t.to))}さんに払う`:`${esc(mname(ev,t.from))}さんから受け取る`}</span><span class="amount">${fmtMinor(t.v,ev.cur)}</span><span class="go">${icon('chevron-right')}</span></button>`}).join(''):`<p>精算は不要です</p>`}</div>`:'';
+  const acctCard=`<div class="card"><h3>メンバーの振込先</h3>${ev.members.map(m=>`<button class="acct-row" data-act="m-view" data-id="${m.id}" data-ai="${bestAcct(ev,m)}">${av(ev,m.id,'sm')}<span class="grow">${esc(m.name)}<small>${hasPay(m)?esc(acctLine((m.accts||[])[bestAcct(ev,m)]||{})):'未登録'}</small></span>${icon('chevron-right')}</button>`).join('')}</div>`;
+  return `${meCard}<div class="card"><h3>精算方法</h3><p class="sub">振込の回数が最小になる組み合わせです。行をタップすると振込先を確認できます。</p>${xs}</div>
   <div class="card"><h3>メンバーごとの内訳</h3><div style="overflow-x:auto"><table class="t"><thead><tr><th>名前</th><th>立替</th><th>負担</th><th>差引</th></tr></thead><tbody>${rows}</tbody></table></div><p class="sub" style="margin-top:8px">差引がプラスなら受け取り、マイナスなら支払いです。</p></div>
   ${foreign.length?`<div class="card"><h3>為替レート</h3><div class="rate-chip">${icon('globe')}<span>${esc(rateStamp())}</span><button class="btn text sm" data-act="rates-refresh">${icon('refresh-cw')}更新</button></div>
   <p class="sub" style="margin:8px 0">外貨の支払い${foreign.length}件は、入力した時点のレートで換算して固定しています。</p><button class="btn tonal sm" data-act="rates-apply">${icon('refresh-cw')}最新レートで再計算する</button></div>`:''}
-  <div class="row2" style="gap:8px"><button class="btn block" data-act="copy-result">${icon('copy')}結果をコピー</button><button class="btn outline block" data-act="share-link">${icon('share-2')}共有リンク</button></div>`;
+  ${acctCard}
+  <div class="row2" style="gap:8px"><button class="btn block" data-act="copy-result">${icon('copy')}結果をコピー</button><button class="btn outline block" data-act="share-link">${icon('qr-code')}メンバーに共有</button></div>`;
 }
 function resultText(ev){
   const b=balances(ev),tr=transfers(b),tot=ev.payments.reduce((a,p)=>a+calc(ev,p).totalMinor,0);
@@ -862,7 +1039,7 @@ function viewEdit(ev){
     <div class="row2"><span style="white-space:nowrap">1 ${D.cur} =</span><input class="input num" id="f-rate" data-f="rate" type="number" inputmode="decimal" step="any" min="0" value="${D.rate||''}"><span>${ev.cur}</span>
     <button class="btn tonal sm" data-act="rate-live" aria-label="最新レートを取得">${icon('refresh-cw')}最新</button></div>
     <p class="hint" id="rate-note" style="margin-top:6px"></p></div>`:''}
-  <div class="field"><span class="lbl" id="payer-l">立て替えた人<span class="tag req">必須</span></span><div class="chips" role="radiogroup" aria-labelledby="payer-l">${payerChips}</div></div>
+  <div class="field"><span class="lbl" id="payer-l">立て替えた人<span class="tag req">必須</span></span><div class="chips" role="radiogroup" aria-labelledby="payer-l">${payerChips}</div>${hasPay(mem(ev,D.payer)||{})?`<button class="btn text sm" data-act="m-view" data-id="${D.payer}" data-ai="${bestAcct(ev,mem(ev,D.payer))}" style="margin-top:4px">${icon('landmark')}${esc(mname(ev,D.payer))}さんの振込先を見る</button>`:''}</div>
   <div class="field"><span class="lbl" id="mode-l">分け方</span>
     <div class="seg" role="radiogroup" aria-labelledby="mode-l">
       <button role="radio" aria-checked="${D.mode==='weight'}" data-act="mode" data-v="weight">${icon('scale')}傾斜で分ける</button>
@@ -989,12 +1166,164 @@ async function scanReceipt(file){
 /* ================= 共有 / 取り込み ================= */
 const b64e=o=>{const b=new TextEncoder().encode(JSON.stringify(o));let s='';b.forEach(x=>s+=String.fromCharCode(x));return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')};
 const b64d=s=>JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0))));
-function importShared(data){
-  let ev; try{ev=b64d(data); if(!validEvent(ev))throw 0}catch{toast('共有リンクを読み込めませんでした',true);history.replaceState(null,'','#/');render();return}
+let MP=null;
+function mpCollect(){
+  if(!MP)return; const o={};
+  document.querySelectorAll('.sheet [data-k]').forEach(el=>{if(el.closest('[hidden]'))return;const x=el.value.trim();if(x)o[el.dataset.k]=x});
+  MP.list[MP.i]=o;
+}
+function mpHTML(ev){
+  const m=mem(ev,MP.id), v=MP.list[MP.i]||{}, cc=v.country||CUR_CC[ev.cur]||'';
+  const fld=(k,ph,extra='',cls='')=>{const l=PAYF.find(x=>x[0]===k)[1];return `<div class="field ${cls}"><label for="mp-${k}">${l}</label><input class="input" id="mp-${k}" data-k="${k}" value="${esc(v[k]||'')}" placeholder="${esc(ph)}" autocomplete="off" ${extra}></div>`};
+  const tabs=MP.list.map((a,j)=>`<button class="chip" role="radio" aria-checked="${j===MP.i}" data-act="mp-tab" data-i="${j}">${icon('check')}${a.label?esc(a.label):_('口座{0}',j+1)}</button>`).join('')+(MP.list.length<MAX_ACCTS?`<button class="chip" data-act="mp-add">${icon('plus')}口座を追加</button>`:'');
+  return `<h2>${esc(m.name)}さんの振込先</h2><p class="hint" style="margin-bottom:12px">この端末にだけ保存されます。精算画面から、ワンタップでコピーできます。</p>
+      <div class="chips" role="radiogroup" aria-label="口座" style="margin-bottom:16px">${tabs}</div>
+      <div class="field"><label for="mp-label">名称(任意)</label><input class="input" id="mp-label" data-k="label" value="${esc(v.label||'')}" placeholder="例: メイン、海外用" maxlength="20" autocomplete="off"></div>
+      <div class="field"><label for="mp-country">国・地域</label><p class="hint">選ぶと、銀行名の候補がその国に絞られます。</p>
+        <select class="input" id="mp-country" data-k="country"><option value="">すべて</option>${COUNTRIES.map(([c,n])=>`<option value="${c}" ${c===cc?'selected':''}>${flag(c)} ${ccName(c)}</option>`).join('')}</select></div>
+      <div class="field"><label for="mp-bank">銀行名</label><p class="hint">入力すると候補が出ます。ひらがなやローマ字でも探せます。候補にない銀行は、そのまま入力できます。</p>
+        <div class="combo"><input class="input" id="mp-bank" data-k="bank" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="bank-list" value="${esc(v.bank||'')}" placeholder="例: みずほ / mizuho" autocomplete="off" enterkeyhint="next"><ul class="combo-list" id="bank-list" role="listbox" aria-label="銀行名の候補" hidden></ul></div></div>
+      ${fld('branch','例: 渋谷支店')}
+      <div class="field jp-only" ${cc&&cc!=='JP'?'hidden':''}><label for="mp-type">口座種別</label><input class="input" id="mp-type" data-k="type" value="${esc(v.type||'')}" placeholder="普通 / 当座" autocomplete="off"><div class="chips" style="margin-top:8px">${['普通','当座','貯蓄'].map(x=>`<button type="button" class="chip" data-act="pick-type" data-v="${x}" style="min-height:40px">${x}</button>`).join('')}</div></div>
+      ${fld('num','例: 1234567','inputmode="numeric"')}
+      ${fld('swift','例: MHCBJPJT / GB29NWBK60161331926819','autocapitalize="characters"','intl-only').replace('<div class="field intl-only"',`<div class="field intl-only" ${!cc||cc==='JP'?'hidden':''}`)}
+      ${fld('holder','例: タナカ タロウ / TARO TANAKA')}
+      ${fld('paypay','例: taro123 / https://pay.paypay.ne.jp/…')}
+      ${fld('note','例: 現金でOK')}
+      <button class="btn block" data-act="mp-save" data-id="${MP.id}">保存</button>
+      ${MP.list.length>1?`<button class="btn danger block" data-act="mp-del" style="margin-top:8px">${icon('trash-2')}この口座を削除</button>`:''}`;
+}
+/* 受け取る人の口座を見るシート。精算(xi あり)では金額と送金済みボタンも出す */
+const bestAcct=(ev,m)=>{const l=m.accts||[];const i=l.findIndex(a=>a.country&&a.country===CUR_CC[ev.cur]);return i>=0?i:0};
+function acctSheet(mid,ai=0,xi=null){
+  const ev=getEv(R.id), m=ev&&mem(ev,mid); if(!m)return;
+  const list=m.accts||[], a=list[ai]||{};
+  const tr=xi!==null?transfers(balances(ev))[xi]:null;
+  const kv=(k,v,copyable=true)=>`<div class="kv"><div><div class="k">${k}</div><div class="v">${esc(v)}</div></div>${copyable?`<button class="icon-btn" data-act="cp" data-v="${esc(v)}" aria-label="${k}をコピー">${icon('copy')}</button>`:''}</div>`;
+  const ppUrl=/^https?:\/\//.test(a.paypay||'')?a.paypay:'';
+  const info=[a.bank,a.branch,a.type,a.num,a.swift,a.holder].filter(Boolean);
+  const dn=tr&&ev.done?.[tr.from+'>'+tr.to]===tr.v;
+  const tabs=list.length>1?`<div class="chips" role="radiogroup" aria-label="口座" style="margin:8px 0">${list.map((x,j)=>`<button class="chip" role="radio" aria-checked="${j===ai}" data-act="acct-sel" data-id="${mid}" data-ai="${j}" data-xi="${xi===null?'':xi}">${icon('check')}${x.label?esc(x.label):_('口座{0}',j+1)}</button>`).join('')}</div>`:'';
+  sheet(`<h2>${tr?`${esc(mname(ev,tr.from))} → ${esc(m.name)}さん`:`${esc(m.name)}さんの振込先`}</h2>
+    ${tr?`<div class="big-amt">${fmtMinor(tr.v,ev.cur)}<button class="btn tonal sm" data-act="cp" data-v="${String(tr.v/10**digits(ev.cur))}">${icon('copy')}金額をコピー</button></div>`:''}
+    ${tabs}
+    <div style="margin:12px 0">${hasPay(m)?[a.country&&kv('国・地域',flag(a.country)+' '+ccName(a.country),false),a.bank&&kv('銀行名',a.bank),a.branch&&kv('支店名',a.branch),a.type&&kv('口座種別',a.type),a.num&&kv('口座番号',a.num),a.swift&&kv('SWIFT/BIC / IBAN',a.swift),a.holder&&kv('口座名義',a.holder),a.paypay&&kv('PayPay',a.paypay),a.note&&kv('メモ',a.note,false)].filter(Boolean).join(''):
+      `<p class="sub" style="padding:12px 0">${esc(m.name)}さんの振込先が未登録です。</p>`}</div>
+    <div class="grid2" style="margin-bottom:8px">${info.length?`<button class="btn outline" data-act="cp" data-v="${esc(info.join(' '))}">${icon('copy')}口座情報をまとめて</button>`:''}${ppUrl?`<a class="btn outline" href="${esc(ppUrl)}" target="_blank" rel="noopener">${icon('external-link')}PayPayを開く</a>`:''}</div>
+    <button class="btn ${hasPay(m)?'outline':''} block" data-act="m-pay" data-id="${mid}" style="margin-bottom:8px">${icon('landmark')}${hasPay(m)?'振込先を編集':'振込先を登録する'}</button>
+    ${tr?`<button class="btn ${dn?'outline':''} block" data-act="done" data-i="${xi}">${icon(dn?'undo-2':'circle-check')}${dn?'送金済みを取り消す':'送金済みにする'}</button>`:''}`);
+}
+const bytesToB64u=u=>{let t='';u.forEach(x=>t+=String.fromCharCode(x));return btoa(t).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')};
+const b64uToBytes=x=>Uint8Array.from(atob(x.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
+let shareSeq=0;
+/* 共有用の内容。compression が使える端末では deflate で縮めて QR に収まりやすくする */
+async function shareUrl(ev,withPay){
+  const o=JSON.parse(JSON.stringify(ev)); delete o.done; delete o.me;
+  if(!withPay)o.members.forEach(m=>delete m.accts);
+  const base=location.origin+location.pathname;
+  if(window.CompressionStream){
+    try{
+      const cs=new Blob([JSON.stringify(o)]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+      return base+'#z='+bytesToB64u(new Uint8Array(await new Response(cs).arrayBuffer()));
+    }catch{}
+  }
+  return base+'#s='+b64e(o);
+}
+async function decodeShared(h){
+  if(h.startsWith('z=')){
+    const ds=new Blob([b64uToBytes(h.slice(2))]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return JSON.parse(await new Response(ds).text());
+  }
+  if(h.startsWith('s='))return b64d(h.slice(2));
+  throw 0;
+}
+async function importShared(h){
+  let ev; try{ev=normEvent(await decodeShared(h)); if(!validEvent(ev))throw 0}catch{toast('共有リンクを読み込めませんでした',true);history.replaceState(null,'','#/');render();return}
   history.replaceState(null,'','#/'); app.innerHTML=viewHome(); window.lucide?.createIcons();
-  sheet(`<h2>共有されたイベント</h2><p style="margin-bottom:16px">「${esc(ev.name)}」(${ev.members.length}人・${ev.payments.length}件)を自分の端末に追加しますか？</p>
-    <div class="row2"><button class="btn outline block" data-act="sheet-close">キャンセル</button><button class="btn block" data-act="import-ok">追加する</button></div>`);
-  window._imp=ev;
+  window._imp=ev; window._impMe='';
+  const old=db.events.find(x=>x.id===ev.id); if(old?.me&&ev.members.some(m=>m.id===old.me))window._impMe=old.me;
+  const meChips=ev.members.map(m=>`<button class="chip" role="radio" aria-checked="${m.id===window._impMe}" data-act="imp-me" data-id="${m.id}">${icon('check')}${esc(m.name)}</button>`).join('');
+  sheet(`<h2>共有されたイベント</h2>
+    <p style="margin-bottom:12px">${old?`「${esc(ev.name)}」は、すでにこの端末にあります。最新の内容で上書きしますか？`:`「${esc(ev.name)}」(${ev.members.length}人・${ev.payments.length}件)を自分の端末に追加しますか？`}</p>
+    <div class="field"><span class="lbl" id="imp-l">あなたはどのメンバーですか？</span><p class="hint">あとから変更できます。選ぶと、精算画面にあなたの分が表示されます。</p><div class="chips" role="radiogroup" aria-labelledby="imp-l">${meChips}</div></div>
+    ${old?`<button class="btn block" data-act="import-ok" data-mode="update" style="margin-bottom:8px">上書き更新</button><button class="btn outline block" data-act="import-ok" data-mode="copy" style="margin-bottom:8px">別のイベントとして追加</button><button class="btn text block" data-act="sheet-close">キャンセル</button>`:
+    `<div class="row2"><button class="btn outline block" data-act="sheet-close">キャンセル</button><button class="btn block" data-act="import-ok" data-mode="new">追加する</button></div>`}`);
+}
+/* ---- 共有シート(QR) ---- */
+function openShare(){
+  sheet(`<h2>メンバーに共有</h2>
+    <p class="hint" style="margin-bottom:12px">相手のスマホのカメラでQRコードを読み取ると、このイベントを追加できます。</p>
+    <div class="qr-box" id="qr-box" role="img" aria-label="QRコード"><p class="sub">QRコードを作成中…</p></div>
+    <button class="chip" id="sh-pay" role="checkbox" aria-checked="false" data-act="sh-toggle" style="margin-bottom:4px">${icon('check')}振込先も含める</button>
+    <p class="hint">オンにすると銀行口座などがQRコードとリンクに入ります。見せる・送る相手に気をつけてください。</p>
+    <div class="grid2" style="margin:12px 0 8px"><button class="btn" data-act="sh-copy">${icon('copy')}リンクをコピー</button><button class="btn outline" data-act="sh-native">${icon('share-2')}共有…</button></div>
+    <p class="hint">共有した時点の内容です。支払いを追加・変更したら、もう一度共有してください。</p>`);
+  shareRender();
+}
+async function shareRender(){
+  const ev=getEv(R.id), box=$('#qr-box'); if(!ev||!box)return;
+  const withPay=$('#sh-pay').getAttribute('aria-checked')==='true', seq=++shareSeq;
+  box.innerHTML='<p class="sub">QRコードを作成中…</p>';
+  const url=await shareUrl(ev,withPay); if(seq!==shareSeq||!$('#qr-box'))return;
+  window._shareUrl=url;
+  try{
+    if(!window.qrcode)await loadScript(QR_SRC);
+    const q=window.qrcode(0,url.length<900?'M':'L'); q.addData(url,'Byte'); q.make();
+    const n=q.getModuleCount(), m=4; let d='';
+    for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(q.isDark(r,c))d+=`M${c+m} ${r+m}h1v1h-1z`;
+    if(seq!==shareSeq||!$('#qr-box'))return;
+    box.innerHTML=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n+2*m} ${n+2*m}" shape-rendering="crispEdges" aria-hidden="true"><rect width="100%" height="100%" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+  }catch{
+    if(seq===shareSeq&&$('#qr-box'))box.innerHTML='<p class="err" style="color:#B00000">データが大きすぎてQRコードにできません。リンクで送ってください。</p>';
+  }
+}
+/* ---- QR読み取り ---- */
+let scanStream=null, scanRaf=0;
+function stopScan(){cancelAnimationFrame(scanRaf);scanStream?.getTracks().forEach(x=>x.stop());scanStream=null}
+function handleQr(text){
+  const i=String(text).indexOf('#'), h=i>=0?text.slice(i+1):'';
+  if(/^(s|z)=/.test(h)){stopScan();closeSheet();importShared(h);return true}
+  const m=$('#qr-msg'); if(m)m.textContent="Let's splitのQRコードではありません。";
+  return false;
+}
+async function openScanner(){
+  sheet(`<h2>QRコードを読み取る</h2>
+    <div class="scan-view"><video id="qr-video" playsinline muted></video></div>
+    <p class="hint" id="qr-msg" role="status" style="text-align:center">カメラをQRコードに向けてください。</p>
+    <button class="btn outline block" data-act="qr-file">${icon('image-plus')}画像から読み取る</button>`);
+  const msg=t=>{const m=$('#qr-msg');if(m)m.textContent=t};
+  try{
+    if(!window.jsQR)await loadScript(JSQR_SRC);
+    scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+    const v=$('#qr-video'); if(!v){stopScan();return}
+    v.srcObject=scanStream; await v.play();
+    const c=document.createElement('canvas'), x=c.getContext('2d',{willReadFrequently:true});
+    const tick=()=>{
+      if(!scanStream)return;
+      if(v.readyState>=2&&v.videoWidth){
+        const sc=Math.min(1,640/Math.max(v.videoWidth,v.videoHeight));
+        c.width=Math.round(v.videoWidth*sc); c.height=Math.round(v.videoHeight*sc);
+        x.drawImage(v,0,0,c.width,c.height);
+        const im=x.getImageData(0,0,c.width,c.height), r=window.jsQR(im.data,c.width,c.height,{inversionAttempts:'dontInvert'});
+        if(r&&handleQr(r.data))return;
+      }
+      scanRaf=requestAnimationFrame(tick);
+    };
+    tick();
+  }catch{
+    stopScan(); msg('カメラを起動できませんでした。ブラウザのカメラ許可を確認するか、画像から読み取ってください。');
+  }
+}
+async function scanImage(file){
+  try{
+    if(!window.jsQR)await loadScript(JSQR_SRC);
+    const bmp=await createImageBitmap(file), sc=Math.min(1,1400/Math.max(bmp.width,bmp.height));
+    const c=document.createElement('canvas'); c.width=Math.round(bmp.width*sc); c.height=Math.round(bmp.height*sc);
+    const x=c.getContext('2d'); x.drawImage(bmp,0,0,c.width,c.height);
+    const im=x.getImageData(0,0,c.width,c.height), r=window.jsQR(im.data,c.width,c.height);
+    if(!r){const m=$('#qr-msg');if(m)m.textContent='QRコードが見つかりませんでした。';return}
+    handleQr(r.data);
+  }catch{const m=$('#qr-msg');if(m)m.textContent='QRコードが見つかりませんでした。'}
 }
 
 /* ================= シート / トースト ================= */
@@ -1005,7 +1334,7 @@ function sheet(html){
   document.body.append(el); window.lucide?.createIcons({nodes:[el]});
   el.querySelector('input,select,button.btn')?.focus();
 }
-function closeSheet(){document.querySelector('.sheet-wrap')?.remove()}
+function closeSheet(){stopScan();document.querySelector('.sheet-wrap')?.remove()}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){const ul=$('#bank-list');if(ul&&!ul.hidden){bankHide();return}closeSheet()}});
 document.addEventListener('focusin',e=>{if(e.target.id==='mp-bank')bankShow()});
 document.addEventListener('focusout',e=>{if(e.target.id==='mp-bank')setTimeout(bankHide,150)});
@@ -1043,14 +1372,15 @@ document.addEventListener('click',async e=>{
   case 'bk-do':{
     try{
       const j=JSON.parse($('#bk-text').value);
-      if(j?.app!==BK_APP||!Array.isArray(j.db?.events)||!j.db.events.every(validEvent))throw 0;
+      if(j?.app!==BK_APP||!Array.isArray(j.db?.events))throw 0;
+      j.db.events.forEach(normEvent); if(!j.db.events.every(validEvent))throw 0;
       db={events:j.db.events};save();
       if(j.settings&&typeof j.settings==='object'){S=Object.assign(S,{theme:['system','light','dark'].includes(j.settings.theme)?j.settings.theme:'system',big:!!j.settings.big,autoRates:j.settings.autoRates!==false});store.set('wakekko.settings',S);applyS()}
       closeSheet();render();toast('読み込みました');
     }catch{$('#bk-msg').textContent='読み込めませんでした。「書き出す」でコピーした内容を、そのまま貼り付けてください。'}break;}
   case 'wipe-pay':case 'wipe':{
     if(!t.dataset.armed){t.dataset.armed='1';const old=t.textContent;t.textContent='もう一度押す';setTimeout(()=>{if(t.isConnected){delete t.dataset.armed;t.textContent=old}},4000);break;}
-    if(a==='wipe-pay'){db.events.forEach(e=>e.members.forEach(m=>delete m.pay));save();closeSheet();render();toast('振込先を削除しました')}
+    if(a==='wipe-pay'){db.events.forEach(e=>e.members.forEach(m=>{delete m.accts;delete m.pay}));save();closeSheet();render();toast('振込先を削除しました')}
     else{wipeKeys.forEach(k=>{try{localStorage.removeItem(k)}catch{}});location.hash='#/';location.reload()}
     break;}
   case 'install':if(deferredInstall){deferredInstall.prompt();await deferredInstall.userChoice;deferredInstall=null;render()}break;
@@ -1064,10 +1394,11 @@ document.addEventListener('click',async e=>{
     if(err)return;
     const n={id:uid(),name,cur:$('#ne-cur').value,members:names.map(n=>({id:uid(),name:n,w:1})),payments:[]};
     db.events.unshift(n); save(); closeSheet(); go(`/e/${n.id}/pay`); break;}
-  case 'ev-settings':
+  case 'ev-settings':openSettings();break;
+  case 'ev-settings-old':
     sheet(`<h2>イベント設定</h2><div class="field"><label for="es-name">イベント名</label><input class="input" id="es-name" value="${esc(ev.name)}" maxlength="40"></div>
       <button class="btn block" data-act="es-save" style="margin-bottom:12px">保存</button><button class="btn danger block" data-act="es-del">${icon('trash-2')}このイベントを削除</button>`);break;
-  case 'es-save':ev.name=$('#es-name').value.trim()||ev.name;save();closeSheet();render();break;
+  case 'es-save':ev.name=$('#es-name').value.trim()||ev.name;ev.me=$('#es-me').value||undefined;save();closeSheet();render();toast('保存しました');break;
   case 'es-del':if(confirm(_('「{0}」を削除します。元に戻せません。よろしいですか？',ev.name))){db.events=db.events.filter(x=>x!==ev);save();closeSheet();go('/')}break;
   case 'm-add':
     sheet(`<h2>メンバーを追加</h2><div class="field"><label for="ma-name">名前<span class="tag req">必須</span></label><input class="input" id="ma-name" maxlength="20" autocomplete="off"></div><div id="ma-err"></div><button class="btn block" data-act="ma-ok">追加</button>`);break;
@@ -1086,59 +1417,55 @@ document.addEventListener('click',async e=>{
     ev.payments.forEach(p=>{if(p.cur!==ev.cur){const r=rate(p.cur,ev.cur);if(r){p.rate=r;p.rateManual=false;n++}}});
     save();render();toast(n?`${n}件を最新レートで再計算しました`:'レートを取得できませんでした',!n);break;}
   case 'copy-result':copy(resultText(ev),'精算結果をコピーしました');break;
-  case 'share-link':
-    sheet(`<h2>共有リンク</h2><p style="margin-bottom:12px">リンクを開いた人が、このイベントのコピーを自分の端末に追加できます。</p>
-      <button class="chip" id="sh-pay" role="checkbox" aria-checked="false" data-act="sh-toggle" style="margin-bottom:8px">${icon('check')}振込先も含める</button>
-      <p class="hint">オンにすると銀行口座などがリンクに入ります。リンクを送る相手に気をつけてください。</p>
-      <button class="btn block" data-act="sh-go">${icon('share-2')}リンクを作る</button>`);break;
-  case 'sh-toggle':t.setAttribute('aria-checked',t.getAttribute('aria-checked')!=='true');break;
-  case 'sh-go':{
-    const withPay=$('#sh-pay').getAttribute('aria-checked')==='true';
-    const o=withPay?ev:{...ev,members:ev.members.map(({pay,...m})=>m),done:undefined};
-    const url=location.origin+location.pathname+'#s='+b64e(o); closeSheet();
-    if(navigator.share){try{await navigator.share({title:ev.name,url});break}catch{}}
-    copy(url,'共有リンクをコピーしました');break;}
+  case 'share-link':openShare();break;
+  case 'sh-toggle':t.setAttribute('aria-checked',t.getAttribute('aria-checked')!=='true');shareRender();break;
+  case 'sh-copy':if(window._shareUrl)copy(window._shareUrl,'共有リンクをコピーしました');break;
+  case 'sh-native':{
+    const u=window._shareUrl; if(!u)break;
+    if(navigator.share){try{await navigator.share({title:ev.name,url:u});break}catch{}}
+    copy(u,'共有リンクをコピーしました');break;}
+  case 'qr-scan':openScanner();break;
+  case 'qr-file':$('#file-qr').click();break;
+  case 'imp-me':{
+    window._impMe=window._impMe===id?'':id;
+    document.querySelectorAll('[data-act=imp-me]').forEach(b=>b.setAttribute('aria-checked',b.dataset.id===window._impMe));break;}
   case 'm-pay':{
-    const m=mem(ev,id), v=m.pay||{}, cc=v.country||CUR_CC[ev.cur]||'';
-    const fld=(k,ph,extra='',cls='')=>{const l=PAYF.find(x=>x[0]===k)[1];return `<div class="field ${cls}"><label for="mp-${k}">${l}</label><input class="input" id="mp-${k}" data-k="${k}" value="${esc(v[k]||'')}" placeholder="${esc(ph)}" autocomplete="off" ${extra}></div>`};
-    sheet(`<h2>${esc(m.name)}さんの振込先</h2><p class="hint" style="margin-bottom:16px">この端末にだけ保存されます。精算画面から、ワンタップでコピーできます。</p>
-      <div class="field"><label for="mp-country">国・地域</label><p class="hint">選ぶと、銀行名の候補がその国に絞られます。</p>
-        <select class="input" id="mp-country" data-k="country"><option value="">すべて</option>${COUNTRIES.map(([c,n])=>`<option value="${c}" ${c===cc?'selected':''}>${flag(c)} ${ccName(c)}</option>`).join('')}</select></div>
-      <div class="field"><label for="mp-bank">銀行名</label><p class="hint">入力すると候補が出ます。ひらがなやローマ字でも探せます。候補にない銀行は、そのまま入力できます。</p>
-        <div class="combo"><input class="input" id="mp-bank" data-k="bank" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="bank-list" value="${esc(v.bank||'')}" placeholder="例: みずほ / mizuho" autocomplete="off" enterkeyhint="next"><ul class="combo-list" id="bank-list" role="listbox" aria-label="銀行名の候補" hidden></ul></div></div>
-      ${fld('branch','例: 渋谷支店')}
-      <div class="field jp-only" ${cc&&cc!=='JP'?'hidden':''}><label for="mp-type">口座種別</label><input class="input" id="mp-type" data-k="type" value="${esc(v.type||'')}" placeholder="普通 / 当座" autocomplete="off"><div class="chips" style="margin-top:8px">${['普通','当座','貯蓄'].map(x=>`<button type="button" class="chip" data-act="pick-type" data-v="${x}" style="min-height:40px">${x}</button>`).join('')}</div></div>
-      ${fld('num','例: 1234567','inputmode="numeric"')}
-      ${fld('swift','例: MHCBJPJT / GB29NWBK60161331926819','autocapitalize="characters"','intl-only').replace('<div class="field intl-only"',`<div class="field intl-only" ${!cc||cc==='JP'?'hidden':''}`)}
-      ${fld('holder','例: タナカ タロウ / TARO TANAKA')}
-      ${fld('paypay','例: taro123 / https://pay.paypay.ne.jp/…')}
-      ${fld('note','例: 現金でOK')}
-      <button class="btn block" data-act="mp-save" data-id="${id}">保存</button>`);break;}
+    const m=mem(ev,id);
+    MP={id,i:0,list:(m.accts&&m.accts.length?m.accts:[{}]).map(x=>({...x}))};
+    sheet(mpHTML(ev));break;}
+  case 'mp-tab':{mpCollect();MP.i=+t.dataset.i;$('.sheet').innerHTML=mpHTML(ev);window.lucide?.createIcons({nodes:[$('.sheet')]});break;}
+  case 'mp-add':{mpCollect();if(MP.list.length>=MAX_ACCTS)break;MP.list.push({});MP.i=MP.list.length-1;$('.sheet').innerHTML=mpHTML(ev);window.lucide?.createIcons({nodes:[$('.sheet')]});break;}
+  case 'mp-del':{MP.list.splice(MP.i,1);if(!MP.list.length)MP.list=[{}];MP.i=Math.max(0,MP.i-1);$('.sheet').innerHTML=mpHTML(ev);window.lucide?.createIcons({nodes:[$('.sheet')]});break;}
   case 'pick-bank':{const el=$('#mp-bank');el.value=t.dataset.v;bankHide();el.focus();break;}
   case 'pick-type':$('#mp-type').value=t.dataset.v;break;
   case 'mp-save':{
-    const m=mem(ev,id); const o={};
-    document.querySelectorAll('.sheet [data-k]').forEach(el=>{if(el.closest('[hidden]'))return;const x=el.value.trim();if(x)o[el.dataset.k]=x});
-    m.pay=PAYF.some(([k])=>o[k])?o:undefined; save(); closeSheet(); render(); toast('振込先を保存しました');break;}
+    const m=mem(ev,id); mpCollect();
+    const list=MP.list.filter(a=>PAYF.some(([k])=>a[k]));
+    m.accts=list.length?list:undefined; delete m.pay; save(); closeSheet(); render(); toast('振込先を保存しました');break;}
   case 'xfer':{
     const tr=transfers(balances(ev))[i]; if(!tr)break;
-    const to=mem(ev,tr.to), pay=to.pay||{}, amt=fmtMinor(tr.v,ev.cur), dn=ev.done?.[tr.from+'>'+tr.to]===tr.v;
-    const raw=String(tr.v/10**digits(ev.cur));
-    const kv=(k,v,copyable=true)=>`<div class="kv"><div><div class="k">${k}</div><div class="v">${esc(v)}</div></div>${copyable?`<button class="icon-btn" data-act="cp" data-v="${esc(v)}" aria-label="${k}をコピー">${icon('copy')}</button>`:''}</div>`;
-    const ppUrl=/^https?:\/\//.test(pay.paypay||'')?pay.paypay:'';
-    const acct=[pay.bank,pay.branch,pay.type,pay.num,pay.swift,pay.holder].filter(Boolean);
-    sheet(`<h2>${esc(mname(ev,tr.from))} → ${esc(to.name)}さん</h2>
-      <div class="big-amt">${amt}<button class="btn tonal sm" data-act="cp" data-v="${raw}">${icon('copy')}金額をコピー</button></div>
-      <div style="margin:12px 0">${hasPay(to)?[pay.country&&kv('国・地域',flag(pay.country)+' '+ccName(pay.country),false),pay.bank&&kv('銀行名',pay.bank),pay.branch&&kv('支店名',pay.branch),pay.type&&kv('口座種別',pay.type),pay.num&&kv('口座番号',pay.num),pay.swift&&kv('SWIFT/BIC / IBAN',pay.swift),pay.holder&&kv('口座名義',pay.holder),pay.paypay&&kv('PayPay',pay.paypay),pay.note&&kv('メモ',pay.note,false)].filter(Boolean).join(''):
-        `<p class="sub" style="padding:12px 0">${esc(to.name)}さんの振込先が未登録です。</p><button class="btn outline sm" data-act="m-pay" data-id="${to.id}">${icon('landmark')}振込先を登録する</button>`}</div>
-      <div class="grid2" style="margin-bottom:8px">${acct.length?`<button class="btn outline" data-act="cp" data-v="${esc(acct.join(' '))}">${icon('copy')}口座情報をまとめて</button>`:''}${ppUrl?`<a class="btn outline" href="${esc(ppUrl)}" target="_blank" rel="noopener">${icon('external-link')}PayPayを開く</a>`:''}</div>
-      <button class="btn ${dn?'outline':''} block" data-act="done" data-i="${i}">${icon(dn?'undo-2':'circle-check')}${dn?'送金済みを取り消す':'送金済みにする'}</button>`);break;}
+    acctSheet(tr.to,bestAcct(ev,mem(ev,tr.to)),i);break;}
+  case 'm-view':acctSheet(id,+(t.dataset.ai||0),null);break;
+  case 'acct-sel':acctSheet(id,+t.dataset.ai,t.dataset.xi===''?null:+t.dataset.xi);break;
   case 'cp':copy(t.dataset.v,'コピーしました');break;
   case 'done':{
     const tr=transfers(balances(ev))[i]; ev.done=ev.done||{}; const k=tr.from+'>'+tr.to;
     if(ev.done[k]===tr.v)delete ev.done[k]; else ev.done[k]=tr.v;
     save(); closeSheet(); render(); break;}
-  case 'import-ok':{const n=window._imp;n.id=uid();db.events.unshift(n);save();closeSheet();go(`/e/${n.id}/pay`);break;}
+  case 'import-ok':{
+    const n=window._imp, mode=t.dataset.mode; let nid;
+    if(mode==='update'){
+      const old=db.events.find(x=>x.id===n.id);
+      if(old){
+        n.members.forEach(m=>{const om=old.members.find(x=>x.id===m.id); if(om?.accts&&!m.accts)m.accts=om.accts});
+        n.done=old.done; n.me=window._impMe||old.me; db.events[db.events.indexOf(old)]=n; nid=n.id;
+      }
+    }
+    if(!nid){
+      if(mode==='copy'||db.events.some(x=>x.id===n.id)||!n.id)n.id=uid();
+      n.me=window._impMe||undefined; db.events.unshift(n); nid=n.id;
+    }
+    save(); closeSheet(); toast(mode==='update'?'更新しました':'追加しました'); go(`/e/${nid}/pay`); break;}
   /* editor */
   case 'payer':D.payer=id;render();break;
   case 'mode':D.mode=t.dataset.v;render();break;
@@ -1178,6 +1505,7 @@ document.addEventListener('change',e=>{
     const ev=getEv(R.id); D.cur=t.value; D.rateManual=false;
     D.rate=D.cur===ev.cur?1:(rate(D.cur,ev.cur)||0); render();
   }
+  if(t.id==='file-qr'){const f=t.files[0];t.value='';if(f)scanImage(f)}
   if(t.id==='file-cam'||t.id==='file-pick'){const f=t.files[0];t.value='';if(f)scanReceipt(f)}
   if(t.dataset.f==='mw'||t.dataset.f==='mname')render();
   if(t.id==='set-cur')setS('defCur',t.value);

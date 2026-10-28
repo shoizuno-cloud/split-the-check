@@ -336,7 +336,7 @@ function applyS(){const r=document.documentElement;S.theme==='system'?r.removeAt
 const setS=(k,v)=>{S[k]=v;store.set('wakekko.settings',S);applyS()};
 applyS();
 const CONTACT='dev-jp@outlook.jp';
-const APP_VERSION='1.4 (2026-10-28)', ISSUES='https://github.com/shoizuno-cloud/split-the-check/issues';
+const APP_VERSION='1.5 (2026-10-28)', ISSUES='https://github.com/shoizuno-cloud/split-the-check/issues';
 /* 外から入ってくるデータ(バックアップ・共有リンク)は、形を確かめてから使う */
 function normEvent(e){
   if(e&&Array.isArray(e.members))e.members.forEach(m=>{
@@ -351,6 +351,15 @@ function normEvent(e){
 }
 db.events.forEach(normEvent);
 const QR_SRC='https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js', JSQR_SRC='https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js', MAX_ACCTS=5;
+let PROF=(()=>{const q=store.get('wakekko.profile',{});return {accts:Array.isArray(q.accts)?q.accts.filter(a=>a&&typeof a==='object').slice(0,MAX_ACCTS):[]}})();
+const saveProf=()=>store.set('wakekko.profile',PROF);
+const acctKey=a=>[a.bank,a.num,a.swift,a.app,a.appid,a.holder].map(x=>x||'').join('|');
+/* 「あなた」に選ばれたメンバーに口座が未登録なら、マイ口座をコピーする */
+function applyProfileToMe(ev){
+  if(!ev||!ev.me||!PROF.accts.length)return false;
+  const m=mem(ev,ev.me); if(!m||hasPay(m))return false;
+  m.accts=PROF.accts.map(a=>({...a})).slice(0,MAX_ACCTS); return true;
+}
 function validEvent(e){
   try{
     if(!e||typeof e.name!=='string'||typeof e.cur!=='string'||!Array.isArray(e.members)||!Array.isArray(e.payments))return false;
@@ -535,8 +544,8 @@ function comboShow(kind){
   const inp=$('#mp-'+kind), ul=$('#'+kind+'-list'); if(!inp||!ul)return;
   const cc=$('#mp-country').value, q=inp.value.trim(), list=dirMatches(kind,cc,q);
   const exact=list.some(b=>b.n===inp.value.trim());
-  let html=list.map(b=>`<li role="option" data-act="pick-combo" data-k="${kind}" data-v="${esc(b.n)}">${esc(b.n)}${cc?'':` <small>${b.c==='*'?'🌐 海外送金':flag(b.c)+' '+esc(ccName(b.c))}</small>`}</li>`).join('');
-  if(q&&!exact)html+=`<li role="option" class="free" data-act="pick-combo" data-k="${kind}" data-v="${esc(q)}">「${esc(q)}」をそのまま使う</li>`;
+  let html=list.map(b=>`<li role="option" data-act="pick-combo" data-ck="${kind}" data-v="${esc(b.n)}">${esc(b.n)}${cc?'':` <small>${b.c==='*'?'🌐 海外送金':flag(b.c)+' '+esc(ccName(b.c))}</small>`}</li>`).join('');
+  if(q&&!exact)html+=`<li role="option" class="free" data-act="pick-combo" data-ck="${kind}" data-v="${esc(q)}">「${esc(q)}」をそのまま使う</li>`;
   ul.innerHTML=html; ul.hidden=!html; inp.setAttribute('aria-expanded',String(!ul.hidden));
 }
 function comboHide(){document.querySelectorAll('.combo-list').forEach(u=>u.hidden=true);document.querySelectorAll('[role=combobox]').forEach(i=>i.setAttribute('aria-expanded','false'))}
@@ -603,6 +612,10 @@ function openSettings(){
   <div class="set-row"><span class="lbl">新しいイベントの通貨<small>イベントを作るときの、精算通貨の初期値</small></span><select class="input" id="set-cur" style="width:150px" aria-label="新しいイベントの通貨">${curOptions(S.defCur)}</select></div>
   ${sw('set-auto',S.autoRates,'為替レートを自動で更新','オフにすると、「更新」ボタンを押したときだけ取得します')}
   <div class="set-row"><span class="lbl">レシートの言語<small>レシートの文字を読み取るときの言語です。「自動」はアプリの言語に合わせます</small></span><select class="input" id="set-ocr" style="width:150px" aria-label="レシートの言語"><option value="auto" ${S.ocr==='auto'?'selected':''}>自動</option>${[['jpn','日本語'],['eng','English'],['kor','한국어'],['chi_sim','简体中文'],['chi_tra','繁體中文'],['tha','ไทย']].map(([c,n])=>`<option value="${c}" ${S.ocr===c?'selected':''}>${n}</option>`).join('')}</select></div>
+  <h3 class="set-h">マイ口座</h3>
+  <p class="hint" style="margin:8px 0">よく使う自分の口座を保存しておくと、ほかのイベントでも選ぶだけで使えます。端末のブラウザにだけ保存されます。</p>
+  ${PROF.accts.map((a,j)=>`<button class="acct-row" data-act="prof-edit" data-j="${j}">${icon('landmark')}<span class="grow">${a.label?esc(a.label)+' ・ ':''}${esc(acctLine(a))}</span>${icon('chevron-right')}</button>`).join('')}
+  <button class="btn tonal sm" data-act="prof-add" style="margin-top:8px" ${PROF.accts.length>=MAX_ACCTS?'disabled':''}>${icon('plus')}マイ口座を追加</button>
   <h3 class="set-h">データ</h3>
   <div class="set-row"><span class="lbl">バックアップ<small>イベント・支払い・振込先・設定をまとめて書き出します。機種変更のときに使います</small></span><div class="row2" style="flex:1 1 100%"><button class="btn tonal sm" data-act="bk-export">書き出す</button><button class="btn outline sm" data-act="bk-import">読み込む</button></div></div>
   <div id="bk-box" hidden style="padding:8px 0"><textarea class="input" id="bk-text" aria-label="バックアップのテキスト" spellcheck="false"></textarea><div class="row2" style="margin-top:8px;flex-wrap:wrap"><button class="btn sm" data-act="bk-do" id="bk-do" hidden>この内容で置き換える</button><button class="btn tonal sm" data-act="bk-save" id="bk-save" hidden>${icon('download')}ファイルに保存</button><span class="hint" id="bk-msg" style="flex:1 1 180px;margin:0"></span></div></div>
@@ -619,7 +632,7 @@ function openSettings(){
   <p class="hint" style="margin-top:16px">バージョン ${APP_VERSION}<br>アイコン: <a href="https://lucide.dev" target="_blank" rel="noopener">Lucide</a>(ISC) ／ 文字認識: <a href="https://github.com/naptha/tesseract.js" target="_blank" rel="noopener">Tesseract.js</a>(Apache-2.0) ／ <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener">Rates By Exchange Rate API</a></p>`);
 }
 const BK_APP='lets-split-the-check';
-const wipeKeys=['wakekko.v1','wakekko.settings','wakekko.noinstall','wakekko.rates'];
+const wipeKeys=['wakekko.profile','wakekko.v1','wakekko.settings','wakekko.noinstall','wakekko.rates'];
 
 /* ---- イベント詳細 ---- */
 function viewEvent(ev,tab){
@@ -905,16 +918,18 @@ const b64d=s=>JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(s.replace
 let MP=null;
 function mpCollect(){
   if(!MP)return; const o={};
-  document.querySelectorAll('.sheet [data-k]').forEach(el=>{if(el.closest('[hidden]'))return;const x=el.value.trim();if(x)o[el.dataset.k]=x});
+  document.querySelectorAll('.sheet input[data-k],.sheet select[data-k]').forEach(el=>{if(el.closest('[hidden]'))return;const x=el.value.trim();if(x)o[el.dataset.k]=x});
   MP.list[MP.i]=o;
 }
 const comboField=(kind,label,hint,ph,val)=>`<div class="field"><label for="mp-${kind}">${label}</label><p class="hint">${hint}</p><div class="combo"><input class="input" id="mp-${kind}" data-k="${kind}" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${kind}-list" value="${esc(val||'')}" placeholder="${esc(ph)}" autocomplete="off" enterkeyhint="next"><ul class="combo-list" id="${kind}-list" role="listbox" aria-label="${label}の候補" hidden></ul></div></div>`;
 function mpHTML(ev){
-  const m=mem(ev,MP.id), v=MP.list[MP.i]||{}, cc=v.country||CUR_CC[ev.cur]||'';
+  const self=MP.id==='__me', m=self?{name:_('マイ口座')}:mem(ev,MP.id), v=MP.list[MP.i]||{}, cc=v.country||CUR_CC[ev?.cur]||(LOCALE.split('-')[1]||'');
   const fld=(k,ph,extra='',cls='')=>{const l=PAYF.find(x=>x[0]===k)[1];return `<div class="field ${cls}"><label for="mp-${k}">${l}</label><input class="input" id="mp-${k}" data-k="${k}" value="${esc(v[k]||'')}" placeholder="${esc(ph)}" autocomplete="off" ${extra}></div>`};
   const tabs=MP.list.map((a,j)=>`<button class="chip" role="radio" aria-checked="${j===MP.i}" data-act="mp-tab" data-i="${j}">${icon('check')}${a.label?esc(a.label):_('口座{0}',j+1)}</button>`).join('')+(MP.list.length<MAX_ACCTS?`<button class="chip" data-act="mp-add">${icon('plus')}口座を追加</button>`:'');
-  return `<h2>${esc(m.name)}さんの振込先</h2><p class="hint" style="margin-bottom:12px">この端末にだけ保存されます。精算画面から、ワンタップでコピーできます。</p>
+  const fromProf=(!self&&PROF.accts.length)?`<div class="field"><span class="lbl">マイ口座から追加</span><p class="hint">一度登録した口座を、ほかのイベントでも使えます。</p><div class="chips">${PROF.accts.map((a,j)=>`<button class="chip" data-act="mp-prof" data-j="${j}">${icon('plus')}${esc(a.label||acctLine(a)||_('口座{0}',j+1))}</button>`).join('')}</div></div>`:'';
+  return `${self?`<h2>マイ口座</h2><p class="hint" style="margin-bottom:12px">この端末にだけ保存されます。イベントの振込先を登録するとき、ここから選べます。</p>`:`<h2>${esc(m.name)}さんの振込先</h2><p class="hint" style="margin-bottom:12px">この端末にだけ保存されます。精算画面から、ワンタップでコピーできます。</p>`}
       <div class="chips" role="radiogroup" aria-label="口座" style="margin-bottom:16px">${tabs}</div>
+      ${fromProf}
       <div class="field"><label for="mp-label">名称(任意)</label><input class="input" id="mp-label" data-k="label" value="${esc(v.label||'')}" placeholder="例: メイン、海外用" maxlength="20" autocomplete="off"></div>
       <div class="field"><label for="mp-country">国・地域</label><p class="hint">選ぶと、銀行名の候補がその国に絞られます。</p>
         <select class="input" id="mp-country" data-k="country">${countryOptions(cc)}</select></div>
@@ -927,6 +942,7 @@ function mpHTML(ev){
       ${comboField('app','決済サービス','サービス名を入力すると候補が出ます。候補にないサービスも、そのまま入力できます。','例: PayPay / Wise / PayPal',v.app)}
       ${fld('appid','例: taro123 / +81-90-… / https://…')}
       ${fld('note','例: 現金でOK')}
+      ${self?'':`<button class="chip" role="checkbox" aria-checked="${!!MP.keep}" data-act="mp-keep" style="margin:4px 0 12px">${icon('check')}入力した口座をマイ口座にも保存(ほかのイベントで使い回せます)</button>`}
       <button class="btn block" data-act="mp-save" data-id="${MP.id}">保存</button>
       ${MP.list.length>1?`<button class="btn danger block" data-act="mp-del" style="margin-top:8px">${icon('trash-2')}この口座を削除</button>`:''}`;
 }
@@ -1098,7 +1114,7 @@ document.addEventListener('click',async e=>{
   case 'set-theme':setS('theme',t.dataset.v);document.querySelectorAll('[data-act=set-theme]').forEach(b=>b.setAttribute('aria-checked',b===t));break;
   case 'set-big':case 'set-auto':{const k=a==='set-big'?'big':'autoRates';const on=t.getAttribute('aria-checked')!=='true';t.setAttribute('aria-checked',on);setS(k,on);break;}
   case 'bk-export':{
-    const txt=JSON.stringify({app:BK_APP,v:1,db,settings:S});
+    const txt=JSON.stringify({app:BK_APP,v:1,db,settings:S,profile:PROF});
     const box=$('#bk-box'),ta=$('#bk-text');box.hidden=false;$('#bk-do').hidden=true;$('#bk-save').hidden=false;ta.readOnly=true;ta.value=txt;ta.select();
     try{await navigator.clipboard.writeText(txt);$('#bk-msg').textContent='コピーしました。メモなどに貼って保管してください。'}catch{$('#bk-msg').textContent='上の欄を全選択してコピーしてください。'}break;}
   case 'bk-save':{
@@ -1113,11 +1129,12 @@ document.addEventListener('click',async e=>{
       j.db.events.forEach(normEvent); if(!j.db.events.every(validEvent))throw 0;
       db={events:j.db.events};save();
       if(j.settings&&typeof j.settings==='object'){S=Object.assign(S,{theme:['system','light','dark'].includes(j.settings.theme)?j.settings.theme:'system',big:!!j.settings.big,autoRates:j.settings.autoRates!==false});store.set('wakekko.settings',S);applyS()}
+      if(j.profile&&Array.isArray(j.profile.accts)){PROF={accts:j.profile.accts.filter(x=>x&&typeof x==='object').slice(0,MAX_ACCTS)};saveProf()}
       closeSheet();render();toast('読み込みました');
     }catch{$('#bk-msg').textContent='読み込めませんでした。「書き出す」でコピーした内容を、そのまま貼り付けてください。'}break;}
   case 'wipe-pay':case 'wipe':{
     if(!t.dataset.armed){t.dataset.armed='1';const old=t.textContent;t.textContent='もう一度押す';setTimeout(()=>{if(t.isConnected){delete t.dataset.armed;t.textContent=old}},4000);break;}
-    if(a==='wipe-pay'){db.events.forEach(e=>e.members.forEach(m=>{delete m.accts;delete m.pay}));save();closeSheet();render();toast('振込先を削除しました')}
+    if(a==='wipe-pay'){db.events.forEach(e=>e.members.forEach(m=>{delete m.accts;delete m.pay}));PROF={accts:[]};saveProf();save();closeSheet();render();toast('振込先を削除しました')}
     else{wipeKeys.forEach(k=>{try{localStorage.removeItem(k)}catch{}});location.hash='#/';location.reload()}
     break;}
   case 'install':if(deferredInstall){deferredInstall.prompt();await deferredInstall.userChoice;deferredInstall=null;render()}break;
@@ -1135,7 +1152,7 @@ document.addEventListener('click',async e=>{
   case 'ev-settings-old':
     sheet(`<h2>イベント設定</h2><div class="field"><label for="es-name">イベント名</label><input class="input" id="es-name" value="${esc(ev.name)}" maxlength="40"></div>
       <button class="btn block" data-act="es-save" style="margin-bottom:12px">保存</button><button class="btn danger block" data-act="es-del">${icon('trash-2')}このイベントを削除</button>`);break;
-  case 'es-save':ev.name=$('#es-name').value.trim()||ev.name;ev.me=$('#es-me').value||undefined;save();closeSheet();render();toast('保存しました');break;
+  case 'es-save':ev.name=$('#es-name').value.trim()||ev.name;ev.me=$('#es-me').value||undefined;const ap=applyProfileToMe(ev);save();closeSheet();render();toast(ap?'マイ口座を「あなた」に反映しました':'保存しました');break;
   case 'es-del':if(confirm(_('「{0}」を削除します。元に戻せません。よろしいですか？',ev.name))){db.events=db.events.filter(x=>x!==ev);save();closeSheet();go('/')}break;
   case 'm-add':
     sheet(`<h2>メンバーを追加</h2><div class="field"><label for="ma-name">名前<span class="tag req">必須</span></label><input class="input" id="ma-name" maxlength="20" autocomplete="off"></div><div id="ma-err"></div><button class="btn block" data-act="ma-ok">追加</button>`);break;
@@ -1169,16 +1186,26 @@ document.addEventListener('click',async e=>{
   case 'm-pay':{
     const m=mem(ev,id);
     await loadBanks();
-    MP={id,i:0,list:(m.accts&&m.accts.length?m.accts:[{}]).map(x=>({...x}))};
+    MP={id,i:0,list:(m.accts&&m.accts.length?m.accts:[{}]).map(x=>({...x})),keep:ev.me===id&&!PROF.accts.length};
     sheet(mpHTML(ev));break;}
   case 'mp-tab':{mpCollect();MP.i=+t.dataset.i;$('.sheet').innerHTML=mpHTML(ev);window.lucide?.createIcons({nodes:[$('.sheet')]});break;}
   case 'mp-add':{mpCollect();if(MP.list.length>=MAX_ACCTS)break;MP.list.push({});MP.i=MP.list.length-1;$('.sheet').innerHTML=mpHTML(ev);window.lucide?.createIcons({nodes:[$('.sheet')]});break;}
   case 'mp-del':{MP.list.splice(MP.i,1);if(!MP.list.length)MP.list=[{}];MP.i=Math.max(0,MP.i-1);$('.sheet').innerHTML=mpHTML(ev);window.lucide?.createIcons({nodes:[$('.sheet')]});break;}
-  case 'pick-combo':{const el=$('#mp-'+t.dataset.k);el.value=t.dataset.v;comboHide();el.focus();break;}
+  case 'mp-keep':{MP.keep=!MP.keep;t.setAttribute('aria-checked',MP.keep);break;}
+  case 'mp-prof':{
+    mpCollect(); const src={...PROF.accts[+t.dataset.j]}, cur=MP.list[MP.i]||{};
+    if(!PAYF.some(([k])=>cur[k]))MP.list[MP.i]=src;
+    else{if(MP.list.length>=MAX_ACCTS){toast(_('口座は{0}件まで登録できます。',MAX_ACCTS),true);break}MP.list.push(src);MP.i=MP.list.length-1}
+    $('.sheet').innerHTML=mpHTML(ev);window.lucide?.createIcons({nodes:[$('.sheet')]});break;}
+  case 'prof-edit':{await loadBanks();MP={id:'__me',i:+t.dataset.j,list:PROF.accts.map(x=>({...x}))};sheet(mpHTML(null));break;}
+  case 'prof-add':{await loadBanks();MP={id:'__me',i:PROF.accts.length,list:[...PROF.accts.map(x=>({...x})),{}]};sheet(mpHTML(null));break;}
+  case 'pick-combo':{const el=$('#mp-'+t.dataset.ck);el.value=t.dataset.v;comboHide();el.focus();break;}
   case 'pick-type':$('#mp-type').value=t.dataset.v;break;
   case 'mp-save':{
-    const m=mem(ev,id); mpCollect();
-    const list=MP.list.filter(a=>PAYF.some(([k])=>a[k]));
+    mpCollect(); const list=MP.list.filter(x=>PAYF.some(([k])=>x[k]));
+    if(MP.id==='__me'){PROF.accts=list.slice(0,MAX_ACCTS);saveProf();closeSheet();openSettings();toast('マイ口座を保存しました');break;}
+    const m=mem(ev,id);
+    if(MP.keep){list.forEach(x=>{if(PROF.accts.length<MAX_ACCTS&&!PROF.accts.some(y=>acctKey(y)===acctKey(x)))PROF.accts.push({...x})});saveProf()}
     m.accts=list.length?list:undefined; delete m.pay; save(); closeSheet(); render(); toast('振込先を保存しました');break;}
   case 'xfer':{
     const tr=transfers(balances(ev))[i]; if(!tr)break;
@@ -1203,7 +1230,7 @@ document.addEventListener('click',async e=>{
       if(mode==='copy'||db.events.some(x=>x.id===n.id)||!n.id)n.id=uid();
       n.me=window._impMe||undefined; db.events.unshift(n); nid=n.id;
     }
-    save(); closeSheet(); toast(mode==='update'?'更新しました':'追加しました'); go(`/e/${nid}/pay`); break;}
+    const ap=applyProfileToMe(n); save(); closeSheet(); toast(ap?'マイ口座を「あなた」に反映しました':mode==='update'?'更新しました':'追加しました'); go(`/e/${nid}/pay`); break;}
   /* editor */
   case 'payer':D.payer=id;render();break;
   case 'mode':{

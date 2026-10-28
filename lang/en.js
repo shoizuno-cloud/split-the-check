@@ -1,6 +1,16 @@
 /* English */
 window.__L={
 ui:{
+'マイ口座':'My accounts',
+'マイ口座から追加':'Add from my accounts',
+'一度登録した口座を、ほかのイベントでも使えます。':'Accounts you saved once can be reused in other events.',
+'入力した口座をマイ口座にも保存(ほかのイベントで使い回せます)':'Also save these accounts to My accounts (reuse them in other events)',
+'この端末にだけ保存されます。イベントの振込先を登録するとき、ここから選べます。':'Saved only on this device. You can pick from here when adding payout details to an event.',
+'よく使う自分の口座を保存しておくと、ほかのイベントでも選ぶだけで使えます。端末のブラウザにだけ保存されます。':'Save the accounts you use often, and just pick them in other events. Stored only in this device’s browser.',
+'マイ口座を追加':'Add my account',
+'マイ口座を保存しました':'My accounts saved',
+'マイ口座を「あなた」に反映しました':'Applied My accounts to “You”',
+'口座は{0}件まで登録できます。':'You can register up to {0} accounts.',
 '決済サービス':'Payment service',
 'ID・電話番号・リンク':'ID / phone / link',
 '例: PayPay / Wise / PayPal':'e.g. PayPay / Wise / PayPal',

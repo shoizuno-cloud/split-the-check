@@ -261,12 +261,17 @@ const store={get(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch{re
    画面の文字は日本語を「鍵」にして、言語ファイル(lang/*.js)の辞書で置き換える。
    描画後に MutationObserver が文字と属性(aria-label など)を翻訳するので、
    画面のテンプレートは日本語のまま書ける。{0} {1} は可変部分のプレースホルダー。 */
-const LANGS=[['ja','日本語','ja-JP'],['en','English','en-US'],['ko','한국어','ko-KR'],['zh','简体中文','zh-CN']];
+const LANGS=[['ja','日本語','ja-JP'],['en','English','en-US'],['ko','한국어','ko-KR'],['zh','简体中文','zh-CN'],['zh-Hant','繁體中文','zh-TW'],['fr','Français','fr-FR'],['de','Deutsch','de-DE'],['es','Español','es-ES'],['pt','Português','pt-BR'],['it','Italiano','it-IT'],['th','ไทย','th-TH'],['vi','Tiếng Việt','vi-VN'],['id','Bahasa Indonesia','id-ID']];
 let LANG='ja', LOCALE='ja-JP', L={}, PATS=[];
 function pickLang(){
   const pref=store.get('wakekko.settings',{}).lang;
   if(pref&&pref!=='auto'&&LANGS.some(x=>x[0]===pref))return pref;
-  for(const l of (navigator.languages||[navigator.language])){const c=(l||'').slice(0,2).toLowerCase();if(LANGS.some(x=>x[0]===c))return c}
+  for(const l of (navigator.languages||[navigator.language])){
+    const lc=(l||'').toLowerCase();
+    if(lc.startsWith('zh'))return /tw|hk|mo|hant/.test(lc)?'zh-Hant':'zh';
+    const c=lc.slice(0,2)==='in'?'id':lc.slice(0,2);
+    if(LANGS.some(x=>x[0]===c))return c;
+  }
   return 'en';
 }
 const _=(k,...a)=>{let v=L.ui?.[k]??k;a.forEach((x,i)=>v=v.split('{'+i+'}').join(x));return v};
@@ -274,23 +279,32 @@ function setIntl(){
   try{curNames=new Intl.DisplayNames([LOCALE],{type:'currency'})}catch{}
   try{regionNames=new Intl.DisplayNames([LOCALE],{type:'region'})}catch{}
 }
-function loadLang(){
+const loadJs=src=>new Promise((res,rej)=>{const sc=document.createElement('script');sc.src=src;sc.onload=()=>res();sc.onerror=()=>rej(new Error(src));document.head.append(sc)});
+/* 言語ファイルは2種類。ja をキーにした辞書(ui)か、番号つきの翻訳(tr)。
+   tr は lang/keys.js のキー順に対応し、足りない分は英語で補う。 */
+async function loadLang(){
   LANG=pickLang(); LOCALE=LANGS.find(x=>x[0]===LANG)[2];
   document.documentElement.lang=LANG; setIntl();
-  if(LANG==='ja')return Promise.resolve();
-  return new Promise(res=>{
-    const sc=document.createElement('script'); sc.src=`lang/${LANG}.js?v=${encodeURIComponent(APP_VERSION)}`;
-    sc.onload=()=>{
-      L=window.__L||{};
-      PATS=Object.keys(L.ui||{}).filter(k=>/\{\d\}/.test(k)).map(k=>{
-        const re=new RegExp('^'+k.split(/\{\d\}/).map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('(.+?)')+'$','s');
-        return [re,L.ui[k]];
-      });
-      res();
-    };
-    sc.onerror=()=>{LANG='ja';LOCALE='ja-JP';document.documentElement.lang='ja';setIntl();res()};
-    document.head.append(sc);
-  });
+  if(LANG==='ja')return;
+  const vq='?v='+encodeURIComponent(APP_VERSION);
+  try{
+    window.__L=undefined;
+    await loadJs(`lang/${LANG}.js${vq}`);
+    let Lx=window.__L||{};
+    if(Lx.tr){
+      await loadJs('lang/keys.js'+vq);
+      await loadJs('lang/en.js'+vq);
+      const en=window.__L, map={};
+      Lx.tr.split('\n').forEach(l=>{const i=l.indexOf('|');if(i>0)map[+l.slice(0,i)]=l.slice(i+1)});
+      const ui={}; window.__KEYS.forEach((k,i)=>{ui[k]=map[i]??en.ui[k]??k});
+      Lx={...Lx,ui};
+    }
+    L=Lx;
+    PATS=Object.keys(L.ui||{}).filter(k=>/\{\d\}/.test(k)).map(k=>{
+      const re=new RegExp('^'+k.split(/\{\d\}/).map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('(.+?)')+'$','s');
+      return [re,L.ui[k]];
+    });
+  }catch{LANG='ja';LOCALE='ja-JP';L={};PATS=[];document.documentElement.lang='ja';setIntl()}
 }
 const JPRE=/[\u3041-\u3096\u30a1-\u30fa\u30fc\u3400-\u9fff]/, TR_ATTRS=['aria-label','placeholder','title','alt','label'];
 function trStr(core){
@@ -326,7 +340,10 @@ function startI18n(){
   window.__missing=missing;
 }
 const SUBJECT=()=>encodeURIComponent(_("Let's split へのお問い合わせ"));
-const ocrLangs=()=>{const o=S.ocr&&S.ocr!=='auto'?S.ocr:({ja:'jpn',en:'eng',ko:'kor',zh:'chi_sim'})[LANG];return o==='eng'?'eng':o+'+eng'};
+const DFLT={pay:{ja:'支払い',en:'Payment',ko:'결제',zh:'付款','zh-Hant':'付款',fr:'Paiement',de:'Zahlung',es:'Pago',pt:'Pagamento',it:'Pagamento',th:'การชำระเงิน',vi:'Khoản chi',id:'Pembayaran'},
+  rcpt:{ja:'レシート',en:'Receipt',ko:'영수증',zh:'小票','zh-Hant':'收據',fr:'Ticket',de:'Beleg',es:'Recibo',pt:'Recibo',it:'Scontrino',th:'ใบเสร็จ',vi:'Hóa đơn',id:'Struk'}};
+const dflt=k=>DFLT[k][LANG]||DFLT[k].en;
+const ocrLangs=()=>{const o=S.ocr&&S.ocr!=='auto'?S.ocr:({ja:'jpn',en:'eng',ko:'kor',zh:'chi_sim','zh-Hant':'chi_tra',fr:'fra',de:'deu',es:'spa',pt:'por',it:'ita',th:'tha',vi:'vie',id:'ind'})[LANG];return o==='eng'?'eng':o+'+eng'};
 
 /* ================= データ ================= */
 let db=store.get('wakekko.v1',{events:[]});
@@ -336,7 +353,7 @@ function applyS(){const r=document.documentElement;S.theme==='system'?r.removeAt
 const setS=(k,v)=>{S[k]=v;store.set('wakekko.settings',S);applyS()};
 applyS();
 const CONTACT='dev-jp@outlook.jp';
-const APP_VERSION='1.5 (2026-10-28)', ISSUES='https://github.com/shoizuno-cloud/split-the-check/issues';
+const APP_VERSION='1.6 (2026-10-28)', ISSUES='https://github.com/shoizuno-cloud/split-the-check/issues';
 /* 外から入ってくるデータ(バックアップ・共有リンク)は、形を確かめてから使う */
 function normEvent(e){
   if(e&&Array.isArray(e.members))e.members.forEach(m=>{
@@ -611,7 +628,7 @@ function openSettings(){
   <h3 class="set-h">計算</h3>
   <div class="set-row"><span class="lbl">新しいイベントの通貨<small>イベントを作るときの、精算通貨の初期値</small></span><select class="input" id="set-cur" style="width:150px" aria-label="新しいイベントの通貨">${curOptions(S.defCur)}</select></div>
   ${sw('set-auto',S.autoRates,'為替レートを自動で更新','オフにすると、「更新」ボタンを押したときだけ取得します')}
-  <div class="set-row"><span class="lbl">レシートの言語<small>レシートの文字を読み取るときの言語です。「自動」はアプリの言語に合わせます</small></span><select class="input" id="set-ocr" style="width:150px" aria-label="レシートの言語"><option value="auto" ${S.ocr==='auto'?'selected':''}>自動</option>${[['jpn','日本語'],['eng','English'],['kor','한국어'],['chi_sim','简体中文'],['chi_tra','繁體中文'],['tha','ไทย']].map(([c,n])=>`<option value="${c}" ${S.ocr===c?'selected':''}>${n}</option>`).join('')}</select></div>
+  <div class="set-row"><span class="lbl">レシートの言語<small>レシートの文字を読み取るときの言語です。「自動」はアプリの言語に合わせます</small></span><select class="input" id="set-ocr" style="width:150px" aria-label="レシートの言語"><option value="auto" ${S.ocr==='auto'?'selected':''}>自動</option>${[['jpn','日本語'],['eng','English'],['kor','한국어'],['chi_sim','简体中文'],['chi_tra','繁體中文'],['fra','Français'],['deu','Deutsch'],['spa','Español'],['por','Português'],['ita','Italiano'],['tha','ไทย'],['vie','Tiếng Việt'],['ind','Bahasa Indonesia']].map(([c,n])=>`<option value="${c}" ${S.ocr===c?'selected':''}>${n}</option>`).join('')}</select></div>
   <h3 class="set-h">マイ口座</h3>
   <p class="hint" style="margin:8px 0">よく使う自分の口座を保存しておくと、ほかのイベントでも選ぶだけで使えます。端末のブラウザにだけ保存されます。</p>
   ${PROF.accts.map((a,j)=>`<button class="acct-row" data-act="prof-edit" data-j="${j}">${icon('landmark')}<span class="grow">${a.label?esc(a.label)+' ・ ':''}${esc(acctLine(a))}</span>${icon('chevron-right')}</button>`).join('')}
@@ -854,7 +871,7 @@ function savePayment(){
   else if(p.mode==='items'&&!p.items.length)e='品目を1つ以上入力してください。';
   $('#form-err').innerHTML=e?`<p class="err" role="alert">${icon('circle-alert')}${e}</p>`:''; window.lucide?.createIcons();
   if(e)return;
-  p.title=p.title||({ja:'支払い',en:'Payment',ko:'결제',zh:'付款'})[LANG];
+  p.title=p.title||dflt('pay');
   const i=ev.payments.findIndex(x=>x.id===p.id);
   if(i>=0)ev.payments[i]=p; else ev.payments.push(p);
   save(); toast('保存しました'); go(`/e/${ev.id}/pay`);
@@ -873,13 +890,15 @@ async function prep(file){
 }
 function parseReceipt(text){
   const items=[]; let total=null;
-  const TOTAL=/(合計|合计|お会計|会計|ご請求|お支払|総計|总计|總計|합계|합 계|결제금액|\bTOTAL\b|amount due|balance due)/i, SUB=/(小計|小计|소계|sub ?total)/i;
-  const SKIP=/(小計|お預|預り|釣|現金|税|TEL|電話|領収|伝票|番号|ポイント|対象|クレジット|カード|点数|お客|様|担当|レジ|登録|〒|http|\d+年|\d+月|\d+日|\d+:\d+|小计|现金|找零|发票|收银|电话|税额|부가세|세금|현금|카드|전화|\b(?:tax|vat|gst|change|cash|card|visa|mastercard|tip|tel|phone|receipt|invoice|date|time|thank)\b)/i;
-  const NUM=/^(.*?)\s*[¥\\]?\s*(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)\s*(?:円|\*|※|-)?\s*$/;
+  const TOTAL=/(合計|合计|お会計|会計|ご請求|お支払|総計|总计|總計|합계|합 계|결제금액|\bTOTAL\b|amount due|balance due|\btotale?\b|\bsumme\b|\bgesamt|\bbetrag\b|\bimporte\b|\bmontant\b|\bjumlah\b|ยอดรวม|รวมทั้งสิ้น|รวม|\btổng\b|thành tiền)/i, SUB=/(小計|小计|소계|sub ?total|sous-?total|zwischensumme|subtotale?|sub ?total)/i;
+  const SKIP=/(小計|お預|預り|釣|現金|税|TEL|電話|領収|伝票|番号|ポイント|対象|クレジット|カード|点数|お客|様|担当|レジ|登録|〒|http|\d+年|\d+月|\d+日|\d+:\d+|小计|现金|找零|发票|收银|电话|税额|부가세|세금|현금|카드|전화|\b(?:tax|vat|gst|change|cash|card|visa|mastercard|tip|tel|phone|receipt|invoice|date|time|thank|tva|mwst|ust|iva|igic|pajak|ppn|trinkgeld|pourboire|propina|gorjeta|mancia|troco|resto|rendu|espèces|especes|bargeld|bar|efectivo|contanti|dinheiro|tunai|kembali|carte|karte|tarjeta|cartão|cartao|carta)\b|ภาษี|เงินสด|เงินทอน|ทอน|thuế|tiền mặt|tiền thừa|稅|找零|現金|發票)/i;
+  const NUM=/^(.*?)\s*[¥\\€£$₩฿₫]?\s*(-?(?:\d{1,3}(?:[.,]\d{3})+|\d+)(?:[.,]\d{1,2})?)\s*(?:円|€|\*|※|-|[A-Z]?)?\s*$/;
+  /* 「1.234,56」「12,50」「1,234.50」のどれも数値にする */
+  const toNum=t=>{const d=t.match(/[.,](\d{1,2})$/);return parseFloat(d?t.slice(0,-d[0].length).replace(/[.,]/g,'')+'.'+d[1]:t.replace(/[.,]/g,''))};
   for(const raw of text.split('\n')){
     const line=raw.normalize('NFKC').replace(/\s+/g,' ').trim(); if(!line)continue;
     const m=line.match(NUM); if(!m)continue;
-    const price=parseFloat(m[2].replace(/,/g,'')); if(!(price>0&&price<1e6))continue;
+    const price=toNum(m[2]); if(!(price>0&&price<1e9))continue;
     let name=m[1].replace(/(?<=[　-鿿＀-￯]) (?=[　-鿿＀-￯])/g,'').replace(/[¥\\\s:：.\-*]+$/,'').trim();
     if(TOTAL.test(line)&&!SUB.test(line)){total=Math.max(total||0,price);continue}
     if(SUB.test(line)||SKIP.test(line)||!/\D/.test(name)||name.length<1)continue;
@@ -902,7 +921,7 @@ async function scanReceipt(file){
     else{
       my.items=[...my.items,...r.items];
       if(r.total){my.amount=String(r.total);my.amountAuto=false}else my.amountAuto=true;
-      if(!my.title)my.title=({ja:'レシート',en:'Receipt',ko:'영수증',zh:'小票'})[LANG];
+      if(!my.title)my.title=dflt('rcpt');
       my.scan={...my.scan,state:'done'};
     }
   }catch(e){

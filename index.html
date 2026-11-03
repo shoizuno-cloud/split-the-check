@@ -244,6 +244,27 @@ textarea.input{min-height:96px;resize:vertical;font-size:14px}
 
 <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 <script>
+/* 利用状況の計測 (PostHog EU / Cookieなし)。送るのは「初めてイベントを作成した」という事実と、URLの「#」より前だけ。 */
+if(!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)){
+!function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],Object.defineProperty(u,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e}}),Object.defineProperty(u.people,"toString",{configurable:!0,enumerable:!0,writable:!0,value:function(){return u.toString(1)+".people (stub)"}}),o="init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagResult isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey getNextSurveyStep identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+posthog.init('phc_vJh3JzN6bTTasdJ4GR6j5kohEhfsPrwx4WWktPYT8hq5',{
+  api_host:'https://eu.i.posthog.com',
+  defaults:'2026-08-30',
+  cookieless_mode:'always',   /* Cookie・localStorage・sessionStorageを使わない */
+  person_profiles:'never',    /* 個人の識別をしない */
+  autocapture:false,          /* クリック等の自動収集をしない */
+  disable_session_recording:true,
+  disable_surveys:true,
+  respect_dnt:true,           /* Do Not Track を尊重 */
+  capture_pageview:true,
+  capture_pageleave:false,
+  before_send:ev=>{           /* 共有リンクの内容は「#」以降に入るため、URLから取り除く */
+    try{const p=ev&&ev.properties;if(p)['$current_url','$referrer','$initial_referrer','$initial_current_url'].forEach(k=>{if(typeof p[k]==='string')p[k]=p[k].split('#')[0]})}catch{}
+    return ev}
+});
+}
+</script>
+<script>
 /* ================= 基本ユーティリティ ================= */
 const $=(s,el=document)=>el.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -256,6 +277,8 @@ const dg={}; const digits=c=>dg[c]??=new Intl.NumberFormat('en',{style:'currency
 const nf={}; const fmt=(v,c)=>(nf[c]??=new Intl.NumberFormat(LOCALE,{style:'currency',currency:c,minimumFractionDigits:digits(c),maximumFractionDigits:digits(c)})).format(v);
 const fmtMinor=(m,c)=>fmt(m/10**digits(c),c);
 const store={get(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}};
+/* 「この端末で初めてイベントを作成した」ときだけ1回、計測に送る(内容は送らない) */
+const trackFirstEvent=()=>{try{if(store.get('wakekko.firstEvent',0))return;store.set('wakekko.firstEvent',1);window.posthog&&posthog.capture('first_event_created')}catch{}};
 
 /* ================= 多言語 =================
    画面の文字は日本語を「鍵」にして、言語ファイル(lang/*.js)の辞書で置き換える。
@@ -583,11 +606,11 @@ const memberInput=()=>`<input class="input ne-m" placeholder="名前" maxlength=
 
 /* ---- 規約・ポリシー ---- */
 const DOCS_JA={
-privacy:{title:'プライバシーポリシー',body:`<p class="meta">最終更新: 2026年10月28日</p>
+privacy:{title:'プライバシーポリシー',body:`<p class="meta">最終更新: 2026年11月3日</p>
 <p>「Let's split」(以下「本サービス」)は、利用者の情報をできるだけ集めない作りにしています。</p>
-<h3>運営者が集めない情報</h3><p>氏名・メールアドレスなどの登録は不要です。アクセス解析、広告、Cookieも使いません。運営者のサーバーはなく、入力した内容が運営者に届くことはありません。</p>
-<h3>端末のブラウザに保存されるもの</h3><ul><li>イベント名、メンバーの名前、支払いの内容と金額</li><li>登録した振込先(銀行口座、決済サービスのID、メモ)</li><li>設定(テーマ、文字サイズ、既定の通貨など)</li><li>アプリ本体の高速表示のためのキャッシュ</li></ul><p>これらは、お使いの端末のブラウザ内にだけ保存され、暗号化はされません。端末を他の人と共有している場合は、振込先の登録をお控えください。「設定」の「すべてのデータを削除」でいつでも消せます。</p>
-<h3>外部への通信</h3><ul><li><b>為替レート</b>: 外貨の換算のため、ExchangeRate-API(open.er-api.com)または Frankfurter に、通貨レートを問い合わせます。送るのは通常の通信情報(IPアドレスなど)のみで、金額やメンバー名は送りません。</li><li><b>部品の読み込み</b>: アイコン(Lucide)、レシート読み取り(Tesseract.js)、QRコードの作成・読み取り(qrcode-generator、jsQR)を、unpkg・jsDelivr から読み込みます。レシートの日本語データは、読み取りを初めて使うときに Tesseract のサーバーから読み込まれます。</li><li><b>配信</b>: 本サービスは GitHub Pages で配信しており、GitHub がアクセスログを記録する場合があります。</li></ul>
+<h3>運営者が集めない情報</h3><p>氏名・メールアドレスなどの登録は不要です。広告やCookieは使いません。利用状況の集計については、下の「外部への通信」をご覧ください。運営者のサーバーはなく、入力した内容が運営者に届くことはありません。</p>
+<h3>端末のブラウザに保存されるもの</h3><ul><li>イベント名、メンバーの名前、支払いの内容と金額</li><li>登録した振込先(銀行口座、決済サービスのID、メモ)</li><li>利用状況の集計を送ったことを覚える印(内容は含みません)</li><li>設定(テーマ、文字サイズ、既定の通貨など)</li><li>アプリ本体の高速表示のためのキャッシュ</li></ul><p>これらは、お使いの端末のブラウザ内にだけ保存され、暗号化はされません。端末を他の人と共有している場合は、振込先の登録をお控えください。「設定」の「すべてのデータを削除」でいつでも消せます。</p>
+<h3>外部への通信</h3><ul><li><b>利用状況の集計</b>: アプリの利用状況を知るため、PostHog(EUリージョン)に、アプリを開いたこと、およびこの端末で初めてイベントが作られたことを送ります。この集計のためにCookieは使いません。「この端末で初めて」を覚えるため、端末のブラウザに印を1つだけ保存します(内容は含みません)。個人を特定する情報も送りません。送るのは通常の通信情報(IPアドレスなど)のみで、サーバー側でハッシュ化されます。イベント名、メンバー名、金額、共有リンクの内容は送りません。ブラウザの「トラッキング拒否(Do Not Track)」の設定を尊重します。</li><li><b>為替レート</b>: 外貨の換算のため、ExchangeRate-API(open.er-api.com)または Frankfurter に、通貨レートを問い合わせます。送るのは通常の通信情報(IPアドレスなど)のみで、金額やメンバー名は送りません。</li><li><b>部品の読み込み</b>: アイコン(Lucide)、レシート読み取り(Tesseract.js)、QRコードの作成・読み取り(qrcode-generator、jsQR)を、unpkg・jsDelivr から読み込みます。レシートの日本語データは、読み取りを初めて使うときに Tesseract のサーバーから読み込まれます。</li><li><b>配信</b>: 本サービスは GitHub Pages で配信しており、GitHub がアクセスログを記録する場合があります。</li></ul>
 <h3>レシートの写真</h3><p>写真の文字の読み取りは、すべてお使いの端末の中で行います。写真は送信も保存もしません。</p>
 <h3>QRコード</h3><p>QRコードの読み取りには、端末のカメラを使います。映像は端末の中だけで処理し、送信も保存もしません。QRコードの中身は、共有リンクと同じです。</p>
 <h3>共有リンク</h3><p>共有リンクには、イベントの内容がリンクの中に含まれます(「#」以降の部分で、リンクを開いても配信サーバーには送られません)。リンクを知っている人は内容を見られるため、送る相手に気をつけてください。振込先は、リンクを作るときに含めるかを選べ、初期設定では含めません。LINEなどで送ると、そのサービスにも内容が渡ります。</p>
@@ -649,7 +672,7 @@ function openSettings(){
   <p class="hint" style="margin-top:16px">バージョン ${APP_VERSION}<br>アイコン: <a href="https://lucide.dev" target="_blank" rel="noopener">Lucide</a>(ISC) ／ 文字認識: <a href="https://github.com/naptha/tesseract.js" target="_blank" rel="noopener">Tesseract.js</a>(Apache-2.0) ／ <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener">Rates By Exchange Rate API</a></p>`);
 }
 const BK_APP='lets-split-the-check';
-const wipeKeys=['wakekko.profile','wakekko.v1','wakekko.settings','wakekko.noinstall','wakekko.rates'];
+const wipeKeys=['wakekko.profile','wakekko.v1','wakekko.settings','wakekko.noinstall','wakekko.rates','wakekko.firstEvent'];
 
 /* ---- イベント詳細 ---- */
 function viewEvent(ev,tab){
@@ -1166,7 +1189,7 @@ document.addEventListener('click',async e=>{
     $('#ne-err').innerHTML=err?`<p class="err" role="alert">${icon('circle-alert')}${err}</p>`:''; window.lucide?.createIcons({nodes:[$('#ne-err')]});
     if(err)return;
     const n={id:uid(),name,cur:$('#ne-cur').value,members:names.map(n=>({id:uid(),name:n,w:1})),payments:[]};
-    db.events.unshift(n); save(); closeSheet(); go(`/e/${n.id}/pay`); break;}
+    db.events.unshift(n); save(); trackFirstEvent(); closeSheet(); go(`/e/${n.id}/pay`); break;}
   case 'ev-settings':openSettings();break;
   case 'ev-settings-old':
     sheet(`<h2>イベント設定</h2><div class="field"><label for="es-name">イベント名</label><input class="input" id="es-name" value="${esc(ev.name)}" maxlength="40"></div>

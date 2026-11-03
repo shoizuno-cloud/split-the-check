@@ -10,6 +10,7 @@
 - 共有: QRコード/リンクでメンバーにイベントを共有(アプリ内でQR読み取りも可)。銀行・決済サービス(PayPay、Wise、PayPal、Alipay、GCash、UPI、PIX など)を複数登録でき、精算画面などから参照できます
 - マイ口座: 一度登録した口座を、ほかのイベントでも使い回せます
 - データは利用者のブラウザ内(localStorage)にのみ保存されます
+- 利用状況の匿名集計: PostHog(EUクラウド)で、画面の種類・機能名・件数だけを集計します(`analytics.js`)。Cookieも端末内への保存も使わず、名前・金額・振込先・共有リンクの中身は送りません。Do Not Track / Global Privacy Control がオンの場合と、github.io 以外(localhost など)では送信しません
 
 ## ローカルで動かす
 

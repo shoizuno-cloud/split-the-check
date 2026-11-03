@@ -243,6 +243,7 @@ textarea.input{min-height:96px;resize:vertical;font-size:14px}
 <input type="file" id="file-qr" accept="image/*" hidden>
 
 <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+<script src="analytics.js"></script>
 <script>
 /* ================= 基本ユーティリティ ================= */
 const $=(s,el=document)=>el.querySelector(s);
@@ -263,6 +264,9 @@ const store={get(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch{re
    画面のテンプレートは日本語のまま書ける。{0} {1} は可変部分のプレースホルダー。 */
 const LANGS=[['ja','日本語','ja-JP'],['en','English','en-US'],['ko','한국어','ko-KR'],['zh','简体中文','zh-CN'],['zh-Hant','繁體中文','zh-TW'],['fr','Français','fr-FR'],['de','Deutsch','de-DE'],['es','Español','es-ES'],['pt','Português','pt-BR'],['it','Italiano','it-IT'],['th','ไทย','th-TH'],['vi','Tiếng Việt','vi-VN'],['id','Bahasa Indonesia','id-ID']];
 let LANG='ja', LOCALE='ja-JP', L={}, PATS=[];
+/* 利用状況の匿名集計(analytics.js)。画面の種類・機能名・件数だけを送り、名前・金額・振込先・共有リンクの中身は送らない */
+const track=(n,p)=>{try{window.__track&&window.__track(n,p)}catch(e){}};
+function trackScreen(r){const b=location.pathname.replace(/\/$/,''),sc=r.v==='event'?'event/'+r.tab:r.v==='doc'?'doc/'+r.k:r.v;track('$pageview',{screen:r.v,tab:r.tab,$pathname:b+'/'+sc,$current_url:location.origin+b+'/'+sc})}
 function pickLang(){
   const pref=store.get('wakekko.settings',{}).lang;
   if(pref&&pref!=='auto'&&LANGS.some(x=>x[0]===pref))return pref;
@@ -353,7 +357,7 @@ function applyS(){const r=document.documentElement;S.theme==='system'?r.removeAt
 const setS=(k,v)=>{S[k]=v;store.set('wakekko.settings',S);applyS()};
 applyS();
 const CONTACT='dev-jp@outlook.jp';
-const APP_VERSION='1.6 (2026-10-28)', ISSUES='https://github.com/shoizuno-cloud/split-the-check/issues';
+const APP_VERSION='1.7 (2026-11-03)', ISSUES='https://github.com/shoizuno-cloud/split-the-check/issues';
 /* 外から入ってくるデータ(バックアップ・共有リンク)は、形を確かめてから使う */
 function normEvent(e){
   if(e&&Array.isArray(e.members))e.members.forEach(m=>{
@@ -507,6 +511,7 @@ function header(title,{back,actions=''}={}){
 function render(){
   R=parseRoute();
   const key=JSON.stringify(R); const same=key===lastKey; lastKey=key;
+  if(!same)trackScreen(R);
   const y=scrollY; closeSheet();
   document.title="Let's split";
   if(R.v==='import'){importShared(R.data);return}
@@ -583,11 +588,11 @@ const memberInput=()=>`<input class="input ne-m" placeholder="名前" maxlength=
 
 /* ---- 規約・ポリシー ---- */
 const DOCS_JA={
-privacy:{title:'プライバシーポリシー',body:`<p class="meta">最終更新: 2026年10月28日</p>
+privacy:{title:'プライバシーポリシー',body:`<p class="meta">最終更新: 2026年11月3日</p>
 <p>「Let's split」(以下「本サービス」)は、利用者の情報をできるだけ集めない作りにしています。</p>
-<h3>運営者が集めない情報</h3><p>氏名・メールアドレスなどの登録は不要です。アクセス解析、広告、Cookieも使いません。運営者のサーバーはなく、入力した内容が運営者に届くことはありません。</p>
+<h3>運営者が集めない情報</h3><p>氏名・メールアドレスなどの登録は不要です。広告やCookieは使いません。利用状況は、個人を特定できない形でのみ集計します(「外部への通信」を参照)。運営者のサーバーはなく、入力した内容が運営者に届くことはありません。</p>
 <h3>端末のブラウザに保存されるもの</h3><ul><li>イベント名、メンバーの名前、支払いの内容と金額</li><li>登録した振込先(銀行口座、決済サービスのID、メモ)</li><li>設定(テーマ、文字サイズ、既定の通貨など)</li><li>アプリ本体の高速表示のためのキャッシュ</li></ul><p>これらは、お使いの端末のブラウザ内にだけ保存され、暗号化はされません。端末を他の人と共有している場合は、振込先の登録をお控えください。「設定」の「すべてのデータを削除」でいつでも消せます。</p>
-<h3>外部への通信</h3><ul><li><b>為替レート</b>: 外貨の換算のため、ExchangeRate-API(open.er-api.com)または Frankfurter に、通貨レートを問い合わせます。送るのは通常の通信情報(IPアドレスなど)のみで、金額やメンバー名は送りません。</li><li><b>部品の読み込み</b>: アイコン(Lucide)、レシート読み取り(Tesseract.js)、QRコードの作成・読み取り(qrcode-generator、jsQR)を、unpkg・jsDelivr から読み込みます。レシートの日本語データは、読み取りを初めて使うときに Tesseract のサーバーから読み込まれます。</li><li><b>配信</b>: 本サービスは GitHub Pages で配信しており、GitHub がアクセスログを記録する場合があります。</li></ul>
+<h3>外部への通信</h3><ul><li><b>為替レート</b>: 外貨の換算のため、ExchangeRate-API(open.er-api.com)または Frankfurter に、通貨レートを問い合わせます。送るのは通常の通信情報(IPアドレスなど)のみで、金額やメンバー名は送りません。</li><li><b>部品の読み込み</b>: アイコン(Lucide)、レシート読み取り(Tesseract.js)、QRコードの作成・読み取り(qrcode-generator、jsQR)を、unpkg・jsDelivr から読み込みます。レシートの日本語データは、読み取りを初めて使うときに Tesseract のサーバーから読み込まれます。</li><li><b>利用状況の集計</b>: アプリの使われ方を知るため、画面の表示回数と機能の利用(イベントの作成、レシート読み取り、共有など)を、PostHog(EUのサーバー)で匿名のまま集計します。このためにCookieを設定したり、端末に何かを保存したりはしません。送るのは、画面の種類、機能の名前、人数などの数、言語・端末の種類・国・流入元といった一般的な情報だけです。イベント名、メンバーの名前、金額、振込先、共有リンクの中身は送りません。国の判定には、通常の通信情報(IPアドレスなど)を使います。ブラウザの「Do Not Track」やGlobal Privacy Controlがオンのときは、送信しません。</li><li><b>配信</b>: 本サービスは GitHub Pages で配信しており、GitHub がアクセスログを記録する場合があります。</li></ul>
 <h3>レシートの写真</h3><p>写真の文字の読み取りは、すべてお使いの端末の中で行います。写真は送信も保存もしません。</p>
 <h3>QRコード</h3><p>QRコードの読み取りには、端末のカメラを使います。映像は端末の中だけで処理し、送信も保存もしません。QRコードの中身は、共有リンクと同じです。</p>
 <h3>共有リンク</h3><p>共有リンクには、イベントの内容がリンクの中に含まれます(「#」以降の部分で、リンクを開いても配信サーバーには送られません)。リンクを知っている人は内容を見られるため、送る相手に気をつけてください。振込先は、リンクを作るときに含めるかを選べ、初期設定では含めません。LINEなどで送ると、そのサービスにも内容が渡ります。</p>
@@ -874,7 +879,7 @@ function savePayment(){
   p.title=p.title||dflt('pay');
   const i=ev.payments.findIndex(x=>x.id===p.id);
   if(i>=0)ev.payments[i]=p; else ev.payments.push(p);
-  save(); toast('保存しました'); go(`/e/${ev.id}/pay`);
+  save(); track('payment_save',{mode:p.mode,foreign:p.cur!==ev.cur,items:(p.items||[]).length,is_new:i<0}); toast('保存しました'); go(`/e/${ev.id}/pay`);
 }
 
 /* ================= レシート読み取り (Tesseract.js) ================= */
@@ -916,7 +921,7 @@ async function scanReceipt(file){
     const st={'loading tesseract core':'エンジンを準備中…','loading language traineddata':'日本語データを読み込み中…','initializing api':'準備中…','recognizing text':'文字を読み取り中…'};
     const {data}=await Tesseract.recognize(canvas,ocrLangs(),{logger:m=>upd(st[m.status]||m.status,Math.round(m.progress*100))});
     if(D!==my)return;
-    const r=parseReceipt(data.text);
+    const r=parseReceipt(data.text); track('receipt_scan',{result:r.items.length?'ok':'empty',items:r.items.length});
     if(!r.items.length){my.scan={...my.scan,state:'error',msg:'品目を読み取れませんでした。明るい場所でまっすぐ撮影するか、手入力してください。'};if(!my.items.length)my.items.push({id:uid(),name:'',price:'',who:[]})}
     else{
       my.items=[...my.items,...r.items];
@@ -925,6 +930,7 @@ async function scanReceipt(file){
       my.scan={...my.scan,state:'done'};
     }
   }catch(e){
+    track('receipt_scan',{result:'error'});
     if(D!==my)return;
     my.scan={...my.scan,state:'error',msg:'読み取りに失敗しました。通信状況を確認するか、手入力してください。'};
   }
@@ -1011,6 +1017,7 @@ async function decodeShared(h){
 }
 async function importShared(h){
   let ev; try{ev=normEvent(await decodeShared(h)); if(!validEvent(ev))throw 0}catch{toast('共有リンクを読み込めませんでした',true);history.replaceState(null,'','#/');render();return}
+  track('share_import_view',{members:ev.members.length,payments:ev.payments.length});
   history.replaceState(null,'','#/'); app.innerHTML=viewHome(); window.lucide?.createIcons();
   window._imp=ev; window._impMe='';
   const old=db.events.find(x=>x.id===ev.id); if(old?.me&&ev.members.some(m=>m.id===old.me))window._impMe=old.me;
@@ -1023,6 +1030,7 @@ async function importShared(h){
 }
 /* ---- 共有シート(QR) ---- */
 function openShare(){
+  track('share_open');
   sheet(`<h2>メンバーに共有</h2>
     <p class="hint" style="margin-bottom:12px">相手のスマホのカメラでQRコードを読み取ると、このイベントを追加できます。</p>
     <div class="qr-box" id="qr-box" role="img" aria-label="QRコード"><p class="sub">QRコードを作成中…</p></div>
@@ -1054,7 +1062,7 @@ let scanStream=null, scanRaf=0;
 function stopScan(){cancelAnimationFrame(scanRaf);scanStream?.getTracks().forEach(x=>x.stop());scanStream=null}
 function handleQr(text){
   const i=String(text).indexOf('#'), h=i>=0?text.slice(i+1):'';
-  if(/^(s|z)=/.test(h)){stopScan();closeSheet();importShared(h);return true}
+  if(/^(s|z)=/.test(h)){track('qr_scan_ok');stopScan();closeSheet();importShared(h);return true}
   const m=$('#qr-msg'); if(m)m.textContent="Let's splitのQRコードではありません。";
   return false;
 }
@@ -1156,7 +1164,7 @@ document.addEventListener('click',async e=>{
     if(a==='wipe-pay'){db.events.forEach(e=>e.members.forEach(m=>{delete m.accts;delete m.pay}));PROF={accts:[]};saveProf();save();closeSheet();render();toast('振込先を削除しました')}
     else{wipeKeys.forEach(k=>{try{localStorage.removeItem(k)}catch{}});location.hash='#/';location.reload()}
     break;}
-  case 'install':if(deferredInstall){deferredInstall.prompt();await deferredInstall.userChoice;deferredInstall=null;render()}break;
+  case 'install':if(deferredInstall){deferredInstall.prompt();const ch=await deferredInstall.userChoice;track('pwa_install',{outcome:ch?.outcome});deferredInstall=null;render()}break;
   case 'install-x':store.set('wakekko.noinstall',true);render();break;
   case 'ev-new':openNewEvent();break;
   case 'ne-addrow':$('#ne-members').insertAdjacentHTML('beforeend',memberInput());$('#ne-members').lastElementChild.focus();break;
@@ -1166,7 +1174,7 @@ document.addEventListener('click',async e=>{
     $('#ne-err').innerHTML=err?`<p class="err" role="alert">${icon('circle-alert')}${err}</p>`:''; window.lucide?.createIcons({nodes:[$('#ne-err')]});
     if(err)return;
     const n={id:uid(),name,cur:$('#ne-cur').value,members:names.map(n=>({id:uid(),name:n,w:1})),payments:[]};
-    db.events.unshift(n); save(); closeSheet(); go(`/e/${n.id}/pay`); break;}
+    db.events.unshift(n); save(); track('event_create',{members:names.length,currency:n.cur}); closeSheet(); go(`/e/${n.id}/pay`); break;}
   case 'ev-settings':openSettings();break;
   case 'ev-settings-old':
     sheet(`<h2>イベント設定</h2><div class="field"><label for="es-name">イベント名</label><input class="input" id="es-name" value="${esc(ev.name)}" maxlength="40"></div>
@@ -1189,12 +1197,13 @@ document.addEventListener('click',async e=>{
     await refreshRates(true); let n=0;
     ev.payments.forEach(p=>{if(p.cur!==ev.cur){const r=rate(p.cur,ev.cur);if(r){p.rate=r;p.rateManual=false;n++}}});
     save();render();toast(n?`${n}件を最新レートで再計算しました`:'レートを取得できませんでした',!n);break;}
-  case 'copy-result':copy(resultText(ev),'精算結果をコピーしました');break;
+  case 'copy-result':copy(resultText(ev),'精算結果をコピーしました');track('settle_copy');break;
   case 'share-link':openShare();break;
   case 'sh-toggle':t.setAttribute('aria-checked',t.getAttribute('aria-checked')!=='true');shareRender();break;
-  case 'sh-copy':if(window._shareUrl)copy(window._shareUrl,'共有リンクをコピーしました');break;
+  case 'sh-copy':if(window._shareUrl){copy(window._shareUrl,'共有リンクをコピーしました');track('share_copy',{with_pay:$('#sh-pay')?.getAttribute('aria-checked')==='true'})}break;
   case 'sh-native':{
     const u=window._shareUrl; if(!u)break;
+    track('share_native',{with_pay:$('#sh-pay')?.getAttribute('aria-checked')==='true'});
     if(navigator.share){try{await navigator.share({title:ev.name,url:u});break}catch{}}
     copy(u,'共有リンクをコピーしました');break;}
   case 'qr-scan':openScanner();break;
@@ -1237,7 +1246,7 @@ document.addEventListener('click',async e=>{
     if(ev.done[k]===tr.v)delete ev.done[k]; else ev.done[k]=tr.v;
     save(); closeSheet(); render(); break;}
   case 'import-ok':{
-    const n=window._imp, mode=t.dataset.mode; let nid;
+    const n=window._imp, mode=t.dataset.mode; let nid; track('share_import_ok',{mode});
     if(mode==='update'){
       const old=db.events.find(x=>x.id===n.id);
       if(old){
@@ -1313,6 +1322,7 @@ document.addEventListener('change',e=>{
 /* ================= 起動 ================= */
 window.addEventListener('load',async()=>{
   await loadLang(); startI18n();
+  window.__ctx={app:'split-the-check',lang:LANG,v:APP_VERSION,pwa:(matchMedia('(display-mode: standalone)').matches||navigator.standalone===true)};
   render(); refreshRates();
   if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').catch(()=>{});
   setInterval(()=>refreshRates(),10*60e3);
